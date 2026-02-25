@@ -12,7 +12,7 @@ alwaysApply: true
 3. 如果 project_profile.json 不存在，执行 CLAUDE.md 中的「项目扫描协议」
 4. 如果项目根目录存在 requirements.md，读取用户的详细需求和偏好
 5. 如果 project_profile.json 存在，执行 CLAUDE.md 中的「6 步工作流程」：
-   - 恢复上下文（读 progress.txt + tasks.json + git log）
+   - 恢复上下文（读 progress.txt + tasks.json + git log；需求同步条件触发，见 CLAUDE.md）
    - 环境与健康检查（运行 init.sh）
    - 选择任务（优先 failed，其次 pending）
    - 增量实现（一次只做一个功能）

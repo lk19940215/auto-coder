@@ -30,6 +30,7 @@
 | `tasks.json` | 功能任务列表，带状态跟踪 | 只能修改 `status` 字段 |
 | `progress.txt` | 跨会话记忆日志 | 只能在末尾追加 |
 | `session_result.json` | 本次会话的结构化输出 | 每次会话结束时覆盖写入 |
+| `sync_state.json` | 需求同步状态（`last_requirements_hash` 等） | 需求同步时由 Agent 创建/更新 |
 | `validate.sh` | 校验脚本 | 只读，只能执行 |
 
 ### requirements.md 处理原则
@@ -59,7 +60,9 @@
 - 如果存在代码文件（`.py`, `.js`, `.ts`, `package.json`, `requirements.txt` 等）→ **旧项目**（已有代码）
 - 如果根目录几乎为空（仅有 `claude-auto-loop/` 和少量文件）→ **新项目**（从零开始）
 
-### 步骤 2A：旧项目 — 扫描现有代码
+### 步骤 2A：旧项目 — 扫描现有代码，**优先整理文档**
+
+**文档先行**：旧项目在扫描前，必须先确保项目文档可读、可用。若 `README.md` 缺失或过于简略、`docs/` 不完整，**先补充/整理文档**（README 至少含项目简介、技术栈、目录结构、关键模块说明），再继续扫描。文档是后续任务高质量执行的基础。
 
 按顺序检查以下文件，**存在则读取**，不存在则跳过：
 
@@ -68,11 +71,11 @@
 3. `Cargo.toml` → Rust，`go.mod` → Go，`pom.xml` / `build.gradle` → Java
 4. `docker-compose.yml` / `Dockerfile` → 容器化配置，提取服务定义
 5. `Makefile` → 构建方式
-6. `README.md` / `docs/` → 现有文档（如果不存在，在 progress.txt 中标记"建议补充 README"）
+6. `README.md` / `docs/` → 现有文档（若缺失或过简，**先整理再扫描**；在 progress.txt 中记录文档状态）
 7. `.env` / `.env.example` → 环境变量配置
 8. 运行 `ls` 查看顶层目录结构
 
-根据扫描结果，生成 `project_profile.json`（格式见下方）和 `init.sh`（规则见下方）。
+根据扫描结果，生成 `project_profile.json`（格式见下方）和 `init.sh`（规则见下方）。`existing_docs` 须如实列出项目中**所有**可读文档路径。
 
 ### 步骤 2B：新项目 — 脚手架搭建
 
@@ -151,6 +154,7 @@
 ```
 
 **注意**：
+- `existing_docs`：列出项目中所有可读文档路径，Agent 实现前按需读取与任务相关的文档；扫描时须如实填写全部文档
 - 字段值必须基于实际扫描结果，**禁止猜测**
 - 如果某个字段无法确定，使用 `"none"` 或空数组 `[]`
 - `services` 中的 `command` 必须来自实际的配置文件（package.json scripts、Procfile 等）或标准命令
@@ -218,11 +222,12 @@ pending ──→ in_progress ──→ testing ──→ done
 ### 第一步：恢复上下文
 
 1. 运行 `pwd` 确认工作目录
-2. 读取 `claude-auto-loop/project_profile.json` 了解项目概况
+2. 读取 `claude-auto-loop/project_profile.json` 了解项目概况，注意 `existing_docs` 列出项目中可用文档路径（**文档内容在第四步实现前才按需读取**）
 3. 读取 `claude-auto-loop/progress.txt` 了解最近的工作进展
 4. 读取 `claude-auto-loop/tasks.json` 查看所有任务的状态
 5. 运行 `git log --oneline -20` 查看最近提交
 6. 如果项目根目录存在 `requirements.md`，读取用户的详细需求和偏好（技术约束、样式要求等），作为本次会话的参考依据
+7. **需求同步（条件触发）**：若 `requirements.md` 或 `claude-auto-loop/requirements_hash.current` 不存在，则跳过本步。否则读取 `requirements_hash.current`（由 harness 在会话开始前写入）和 `sync_state.json`（若存在）。若当前 hash 与 `sync_state.json` 中的 `last_requirements_hash` 不同，或 `sync_state.json` 不存在，则执行需求同步：对比 `requirements.md` 与 `tasks.json`，若发现功能需求中有尚未被 `tasks.json` 覆盖的新项，将其拆解为新任务追加到 `features` 数组（`status: "pending"`），保持与既有任务格式一致；同步完成后，写入或更新 `sync_state.json`，包含 `last_requirements_hash` 和 `last_synced_at`（ISO 时间戳）。若 hash 相同则跳过需求同步
 
 ### 第二步：环境与健康检查
 
@@ -245,13 +250,14 @@ pending ──→ in_progress ──→ testing ──→ done
 2. 按照 `tasks.json` 中该任务的 `steps` 逐步完成
 3. 写出清晰、可维护的代码
 4. **不要试图同时实现多个功能**
-5. 如果 `project_profile.json` 中 `existing_docs` 非空，在实现前先读取相关文档，了解项目的编码规范、API 约定、架构决策等
-6. 如果本次修改影响了已有文档中描述的功能，在收尾阶段同步更新对应文档
+5. **实现前按需读相关文档**（文档读取的唯一时机）：在开始编码前，从 `project_profile.json` 的 `existing_docs` 中，按当前任务的 category 和 steps 读取**与任务相关**的文档（如涉及 API 则读 API 文档、涉及架构则读架构文档），了解编码规范、API 约定，避免实现偏离项目既有风格
+6. **按需维护文档**：**仅当功能对外行为发生变化时**才更新 README 或 docs，例如：新增用户可见功能、新增 API、配置方式变更、使用说明变化。以下情况**不强制**更新文档：内部重构、变量重命名、性能优化、仅修复既有功能的 Bug
 
 ### 第五步：测试验证
 
 1. 将任务 `status` 改为 `testing`
-2. 根据功能类型选择验证方式：
+2. **测试范围**：优先验证**本次变更**所涉及的功能与文件，不必每次都做全量回归。若本次改动只影响某组件或某接口，聚焦该部分即可；仅当改动可能波及上下游时，再扩大测试范围。
+3. 根据功能类型选择验证方式：
 
 **Web / 前端功能**（优先级从高到低）：
 - 如果有 Playwright MCP 可用（检查 `project_profile.json` 中 `mcp_tools.playwright` 为 `true`）→ 用 `browser_navigate`、`browser_snapshot`、`browser_click` 等工具做端到端浏览器验证
@@ -265,16 +271,17 @@ pending ──→ in_progress ──→ testing ──→ done
 - 如果项目已有测试框架（检查 `project_profile.json` 中 `has_tests` 为 `true`）→ 运行 `pytest` / `npm test` 等
 - 如果没有测试框架 → 通过调用入口函数或脚本验证输出
 
-3. 如果测试通过：将 `status` 改为 `done`
-4. 如果测试失败：将 `status` 改为 `failed`，在 notes 中记录失败原因
+4. 如果测试通过：将 `status` 改为 `done`
+5. 如果测试失败：将 `status` 改为 `failed`，在 notes 中记录失败原因
 
 ### 第六步：收尾（每次会话必须执行）
 
-1. **Git 提交**：
+1. **按需更新项目文档**：仅当本次变更涉及**对外行为**（新增功能、API 变更、使用方式变化等）时，在 `README.md` 或 `docs/` 中补充/更新对应说明。内部重构、Bug 修复不强制更新文档
+2. **Git 提交**：
    ```bash
    git add -A && git commit -m "feat(task-id): 功能描述"
    ```
-2. **更新 progress.txt**（在末尾追加）：
+3. **更新 progress.txt**（在末尾追加）：
    ```
    === Session N | YYYY-MM-DD HH:MM ===
    - 任务：task-id 任务描述
@@ -284,7 +291,7 @@ pending ──→ in_progress ──→ testing ──→ done
    - Git: commit-hash - commit message
    - 下次注意：给下一个会话的提醒（如有）
    ```
-3. **写入 session_result.json**（覆盖写入）：
+4. **写入 session_result.json**（覆盖写入）：
    ```json
    {
      "session_result": "success 或 failed",
@@ -296,24 +303,25 @@ pending ──→ in_progress ──→ testing ──→ done
      "notes": "简要说明"
    }
    ```
-4. **确保代码处于可工作状态**（下一个会话可以直接开始新功能）
+5. **确保代码处于可工作状态**（下一个会话可以直接开始新功能）
 
 ---
 
 ## 铁律（不可违反）
 
 1. **一次只做一个功能**：不要试图一口气完成所有任务
-2. **不得删除或修改 tasks.json 中的任务描述**：只能修改 `status` 字段
+2. **不得删除或修改 tasks.json 中已有任务的描述**：只能修改 `status` 字段；允许根据 requirements.md 新增任务
 3. **不得跳过状态**：必须按照状态机的合法迁移路径更新
 4. **不得过早标记 done**：只有通过端到端测试才能标记
 5. **每次结束前必须 git commit**：确保代码不丢失
 6. **每次结束前必须更新 progress.txt**：确保下个会话能快速恢复上下文
 7. **每次结束前必须写 session_result.json**：这是 harness 判断你工作成果的唯一依据
 8. **发现 Bug 优先修复**：先确保现有功能正常，再开发新功能
-9. **不得修改 CLAUDE.md**：这是你的指令文件，不是你的编辑对象
-10. **不得修改 validate.sh**：如需改校验逻辑，记录到 progress.txt 让人类处理
-11. **不得修改 requirements.md**：这是用户的需求输入，你只能读取和遵循，绝对不能修改、删除或重写
-12. **project_profile.json 基于事实**：所有字段必须来自实际文件扫描，禁止猜测或编造
+9. **按需维护文档**：仅当功能对外行为发生变化时才更新 README 或 docs；内部重构、Bug 修复不强制更新
+10. **不得修改 CLAUDE.md**：这是你的指令文件，不是你的编辑对象
+11. **不得修改 validate.sh**：如需改校验逻辑，记录到 progress.txt 让人类处理
+12. **不得修改 requirements.md**：这是用户的需求输入，你只能读取和遵循，绝对不能修改、删除或重写
+13. **project_profile.json 基于事实**：所有字段必须来自实际文件扫描，禁止猜测或编造
 
 ---
 
@@ -352,5 +360,16 @@ pending ──→ in_progress ──→ testing ──→ done
   "git_commit": "abc1234 或 null",
   "tests_passed": true | false,
   "notes": "本次会话的简要说明"
+}
+```
+
+## sync_state.json 格式（需求同步条件触发用）
+
+当 Agent 执行需求同步时创建或更新此文件：
+
+```json
+{
+  "last_requirements_hash": "sha256 哈希值（与 requirements_hash.current 一致）",
+  "last_synced_at": "2026-02-25T12:00:00"
 }
 ```

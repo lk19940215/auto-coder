@@ -27,22 +27,28 @@
 set -euo pipefail
 
 # ============ 配置 ============
-MAX_SESSIONS=50          # 最大会话数（安全上限）
+MAX_SESSIONS=1         # 最大会话数（安全上限）
 CLAUDE_PID=""            # 当前 claude 子进程 PID，供 trap 终止用
 THINKING_PID=""          # 思考中提示的 PID，供 trap 终止用
 MAX_RETRY=3              # 每个任务最大重试次数
 PAUSE_EVERY=5            # 每 N 个会话暂停确认
 
-# ============ 路径 ============
+# ============ 路径与默认值 ============
+# CLAUDE_EXTRA_FLAGS 在 main() 中根据 config.env 的 CLAUDE_DEBUG 设置；此处预先初始化避免 set -u 下 unbound variable
+# CLAUDE_MODEL_FLAGS 在 main() 中当使用 DeepSeek 时设为 --model，覆盖 settings 防止误用 reasoner
+CLAUDE_EXTRA_FLAGS=()
+CLAUDE_MODEL_FLAGS=()
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 TASKS_FILE="$SCRIPT_DIR/tasks.json"
 PROGRESS_FILE="$SCRIPT_DIR/progress.txt"
 SESSION_RESULT="$SCRIPT_DIR/session_result.json"
 PROFILE="$SCRIPT_DIR/project_profile.json"
+REQUIREMENTS_HASH_FILE="$SCRIPT_DIR/requirements_hash.current"
 CLAUDE_MD="$SCRIPT_DIR/CLAUDE.md"
 VALIDATE_SH="$SCRIPT_DIR/validate.sh"
 PHASE_FILE="$SCRIPT_DIR/.phase"
+PHASE_STEP_FILE="$SCRIPT_DIR/.phase_step"
 
 # ============ 颜色输出 ============
 RED='\033[0;31m'
@@ -57,15 +63,23 @@ log_warn()  { echo -e "${YELLOW}[WARN]${NC}  $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # 进度提示：通过 Claude Code PreToolUse hook 检测工具调用，精准切换「思考中」→「AI 编码中」
-# .phase 由 hooks/phase-signal.sh 在首次 PreToolUse 时写入 "coding"
+# .phase 由 hooks/phase-signal.py 在首次 PreToolUse 时写入 "coding"
+# .phase_step 为根据工具调用推断的 6 步流程当前步骤（如 "4-增量实现"）
 start_thinking_indicator() {
     echo "thinking" > "$PHASE_FILE" 2>/dev/null || true
+    rm -f "$PHASE_STEP_FILE" 2>/dev/null || true
     ( while true; do
         sleep 15
         phase="thinking"
         [ -f "$PHASE_FILE" ] && phase=$(cat "$PHASE_FILE" 2>/dev/null | head -1) || true
+        step_label=""
+        [ -f "$PHASE_STEP_FILE" ] && step_label=$(cat "$PHASE_STEP_FILE" 2>/dev/null | head -1) || true
         if [ "$phase" = "coding" ]; then
-          echo -e "${GREEN}[INFO]${NC}  AI 编码中... $(date '+%H:%M:%S')" >&2
+          if [ -n "$step_label" ]; then
+            echo -e "${GREEN}[INFO]${NC}  AI 编码中 · 步骤${step_label} $(date '+%H:%M:%S')" >&2
+          else
+            echo -e "${GREEN}[INFO]${NC}  AI 编码中... $(date '+%H:%M:%S')" >&2
+          fi
         else
           echo -e "${BLUE}[INFO]${NC}  思考中... $(date '+%H:%M:%S')" >&2
         fi
@@ -75,6 +89,8 @@ start_thinking_indicator() {
 stop_thinking_indicator() {
     [ -n "$THINKING_PID" ] && kill $THINKING_PID 2>/dev/null && wait $THINKING_PID 2>/dev/null
     THINKING_PID=""
+    # 会话结束，清理 .phase_step 避免下次误读旧状态
+    rm -f "$PHASE_STEP_FILE" 2>/dev/null || true
 }
 
 # ============ 前置检查 ============
@@ -131,6 +147,23 @@ check_prerequisites() {
 get_head() {
     cd "$PROJECT_ROOT"
     git rev-parse HEAD 2>/dev/null || echo "none"
+}
+
+# 计算 requirements.md 的 SHA256 hash，供需求同步条件触发使用
+# 若文件不存在返回空字符串
+get_requirements_hash() {
+    local req_file="$PROJECT_ROOT/requirements.md"
+    if [ -f "$req_file" ]; then
+        if command -v shasum &> /dev/null; then
+            shasum -a 256 < "$req_file" | awk '{print $1}'
+        elif command -v sha256sum &> /dev/null; then
+            sha256sum < "$req_file" | awk '{print $1}'
+        else
+            echo ""
+        fi
+    else
+        echo ""
+    fi
 }
 
 all_tasks_done() {
@@ -236,7 +269,7 @@ run_scan() {
     # 使用 bypassPermissions 允许 Agent 无需交互确认即可创建/编辑文件
     # --settings 加载 PreToolUse hook，首次工具调用时写入 .phase="coding"，供进度指示器切换
     # CLAUDE_EXTRA_FLAGS 由 config.env 的 CLAUDE_DEBUG 控制，可输出 MCP/API 等调试日志
-    script -q /dev/null claude "${CLAUDE_EXTRA_FLAGS[@]}" --permission-mode bypassPermissions --settings "$SCRIPT_DIR/hooks-settings.json" -p "
+    script -q /dev/null claude "${CLAUDE_MODEL_FLAGS[@]}" "${CLAUDE_EXTRA_FLAGS[@]}" --permission-mode bypassPermissions --settings "$SCRIPT_DIR/hooks-settings.json" -p "
 你是项目初始化 Agent。请严格按照 claude-auto-loop/CLAUDE.md 中的「项目扫描协议」执行。
 
 项目类型: $project_type
@@ -266,7 +299,7 @@ run_scan() {
 
 5. 创建 claude-auto-loop/progress.txt，记录本次初始化的摘要
 
-6. 写入 claude-auto-loop/session_result.json
+6. 写入 claude-auto-loop/session_result.json (含 {"session_result": "SUCCESS", "status_after": "pending", "summary": "初始化完成"})
 
 7. Git 提交: git add -A && git commit -m 'init: 项目扫描 + 任务分解'
 
@@ -323,6 +356,16 @@ run_coding_session() {
 
     rm -f "$SESSION_RESULT"
 
+    # 为需求同步条件触发：在会话开始前写入当前 requirements.md 的 hash
+    # Agent 通过比较此文件与 sync_state.json 决定是否执行需求 diff
+    local req_hash
+    req_hash=$(get_requirements_hash 2>/dev/null || true)
+    if [ -n "$req_hash" ]; then
+        echo "$req_hash" > "$REQUIREMENTS_HASH_FILE"
+    else
+        rm -f "$REQUIREMENTS_HASH_FILE"
+    fi
+
     echo ""
     log_info "正在调用 Claude Code (Session $session_num)..."
     log_info "PreToolUse hook 检测工具调用，首次调用时自动切换为「AI 编码中」"
@@ -344,18 +387,33 @@ run_coding_session() {
 4. 增量实现（一次只做一个功能）
 5. 测试验证（端到端测试，按状态机更新 status）
 6. 收尾（git commit + 更新 progress.txt + 写 session_result.json）
+
+高效执行要求：
+- **批量操作 (Batch Operations)**：严禁碎片的工具调用。请将相关文件的读取合并为一次 Read 调用；将多个文件的修改合并为一次 Edit 调用；思考与操作合并进行。
+- **减少交互**：不要每一步都停下来思考，规划好后一次性执行多个步骤。
+
+文档要求：
+- 实现前按需读取 project_profile.json 中 existing_docs 与当前任务相关的文档（仅第四步读取）
+- 仅当功能对外行为变更时才更新 README 或 docs；内部重构、Bug 修复不强制
 ${mcp_hint:+
 
 可用工具提示:
 ${mcp_hint}}
 
 特别注意：
-- 你必须在结束前写入 claude-auto-loop/session_result.json
+- 你必须在结束前写入 claude-auto-loop/session_result.json，格式如下：
+\`\`\`json
+{
+  "session_result": "SUCCESS",  // 或 FAILURE
+  "status_after": "done",       // 任务完成后的状态 (done/failed/testing)
+  "summary": "简要总结本次变更"
+}
+\`\`\`
 - 严格遵守状态机迁移规则，不得跳步"
 
     set +e
     # CLAUDE_EXTRA_FLAGS 由 config.env 的 CLAUDE_DEBUG 控制，可输出 MCP/API 等调试日志
-    script -q /dev/null claude "${CLAUDE_EXTRA_FLAGS[@]}" --permission-mode bypassPermissions --settings "$SCRIPT_DIR/hooks-settings.json" -p "$coding_prompt" &
+    script -q /dev/null claude "${CLAUDE_MODEL_FLAGS[@]}" "${CLAUDE_EXTRA_FLAGS[@]}" --permission-mode bypassPermissions --settings "$SCRIPT_DIR/hooks-settings.json" -p "$coding_prompt" &
     CLAUDE_PID=$!
     wait $CLAUDE_PID
     local claude_exit=$?
@@ -382,7 +440,7 @@ main() {
     # 信号处理：Ctrl+C / kill 时优雅退出（终止 claude 与思考提示后退出）
     trap 'if [ -n "$THINKING_PID" ]; then kill $THINKING_PID 2>/dev/null; wait $THINKING_PID 2>/dev/null; fi; if [ -n "$CLAUDE_PID" ]; then kill -TERM $CLAUDE_PID 2>/dev/null; pkill -P $CLAUDE_PID -TERM 2>/dev/null; wait $CLAUDE_PID 2>/dev/null; fi; echo ""; log_warn "收到中断信号，正在安全退出..."; log_info "下次运行 bash claude-auto-loop/run.sh 即可恢复"; exit 130' INT TERM
 
-    # 加载模型配置（如果存在）
+    # 加载模型配置（如果存在）；CLAUDE_EXTRA_FLAGS 已在脚本开头初始化
     if [ -f "$SCRIPT_DIR/config.env" ]; then
         source "$SCRIPT_DIR/config.env"
         # 仅导出非空变量，避免覆盖已有环境
@@ -396,7 +454,40 @@ main() {
         [ -n "${ANTHROPIC_MODEL:-}" ] && export ANTHROPIC_MODEL
         [ -n "${API_TIMEOUT_MS:-}" ] && export API_TIMEOUT_MS
         [ -n "${MCP_TOOL_TIMEOUT:-}" ] && export MCP_TOOL_TIMEOUT
+        [ -n "${ANTHROPIC_SMALL_FAST_MODEL:-}" ] && export ANTHROPIC_SMALL_FAST_MODEL
+        [ -n "${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:-}" ] && export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
+        [ -n "${CLAUDE_CODE_EFFORT_LEVEL:-}" ] && export CLAUDE_CODE_EFFORT_LEVEL
+        
+        # DeepSeek 智能映射策略：
+        # 1. 如果配置为 deepseek-reasoner，则使用 reasoner（允许 Thinking/高价）
+        # 2. 如果配置为 deepseek-chat (或默认)，则伪装成 claude-3-haiku-20240307
+        #    - 原理：Claude Code 认为 Haiku 不支持 Thinking，因此不发送 thinking 参数
+        #    - 结果：DeepSeek 收到 Haiku 请求后 Fallback 到 V3 (Chat)，避开 Reasoner 计费
+        if [ -n "${ANTHROPIC_BASE_URL:-}" ] && [[ "${ANTHROPIC_BASE_URL}" == *deepseek* ]]; then
+            # 默认为 chat，除非显式包含 reasoner
+            if [[ "${ANTHROPIC_MODEL:-}" != *reasoner* ]]; then
+                # 方案 A: 降本伪装 (Haiku Shim)
+                export ANTHROPIC_MODEL="claude-3-haiku-20240307"
+                # 覆盖所有内部别名，彻底封死 Thinking 路径
+                export ANTHROPIC_DEFAULT_OPUS_MODEL="claude-3-haiku-20240307"
+                export ANTHROPIC_DEFAULT_SONNET_MODEL="claude-3-haiku-20240307"
+                export ANTHROPIC_DEFAULT_HAIKU_MODEL="claude-3-haiku-20240307"
+                # 仍保留 budget=0 作为双重保险
+                export ANTHROPIC_THINKING_BUDGET=0
+            else
+                # 方案 B: 强推理模式 (Reasoner)
+                # 允许使用 thinking (不设置 budget=0 或设置较大值)
+                # 确保 Opus 映射到 Reasoner 以利用其能力
+                export ANTHROPIC_DEFAULT_OPUS_MODEL="deepseek-reasoner"
+            fi
+        fi
+        
+        [ -n "${ANTHROPIC_THINKING_BUDGET:-}" ] && export ANTHROPIC_THINKING_BUDGET
         log_ok "模型配置已加载: ${MODEL_PROVIDER:-unknown}${ANTHROPIC_MODEL:+ ($ANTHROPIC_MODEL)}"
+        # deepseek-reasoner 成本提醒
+        if [[ "${ANTHROPIC_MODEL:-}" == *reasoner* ]] && { [[ "${ANTHROPIC_BASE_URL:-}" == *deepseek* ]] || [ "${MODEL_PROVIDER:-}" = "deepseek" ]; }; then
+            log_warn "deepseek-reasoner 价格约为 deepseek-chat 的 2 倍，改 config.env 中 ANTHROPIC_MODEL=deepseek-chat 可降低成本"
+        fi
         # CLAUDE_DEBUG 可随时在 config.env 中修改，无需重跑 setup
         # 取值: verbose | mcp | api,mcp | api,hooks 等，空则不追加
         if [ -n "${CLAUDE_DEBUG:-}" ]; then
@@ -409,8 +500,17 @@ main() {
         else
             CLAUDE_EXTRA_FLAGS=()
         fi
+        
+        # DeepSeek 时显式传 --model 覆盖 settings
+        # 注意：run.sh 前面可能已将 ANTHROPIC_MODEL 重写为 claude-3-haiku 以禁用 thinking
+        if [ -n "${ANTHROPIC_BASE_URL:-}" ] && [[ "${ANTHROPIC_BASE_URL}" == *deepseek* ]] && [ -n "${ANTHROPIC_MODEL:-}" ]; then
+            CLAUDE_MODEL_FLAGS=(--model "$ANTHROPIC_MODEL")
+        else
+            CLAUDE_MODEL_FLAGS=()
+        fi
     else
         CLAUDE_EXTRA_FLAGS=()
+        CLAUDE_MODEL_FLAGS=()
     fi
 
     check_prerequisites

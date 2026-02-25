@@ -103,6 +103,24 @@ cat claude-auto-loop/tasks.json            # 任务列表和状态
 cat claude-auto-loop/project_profile.json  # 自动检测的项目元数据
 ```
 
+### 需求变更与用户介入
+
+**需求会变动时：**
+
+- 修改 `requirements.md` 后，下次运行 `bash claude-auto-loop/run.sh` 时，Agent 会读取最新内容。
+- Agent 在恢复上下文时会**条件触发**需求同步：仅当 `requirements.md` 内容发生变化时，才对比 `requirements.md` 与 `tasks.json`；若发现未被覆盖的新需求，会拆解为新任务追加到 `tasks.json`，然后照常选任务、实现。
+- 协议允许 Agent 新增任务（仅禁止删除或修改已有任务描述），因此需求变更会自动反映到任务列表。
+
+**当你自己发现需要改进时，有三种方式：**
+
+| 方式 | 操作 | 适用场景 |
+|------|------|----------|
+| 更新需求文档 | 在 `requirements.md` 中补充新需求或改进点，然后 `bash claude-auto-loop/run.sh` | 希望 Agent 拆解并实现，推荐 |
+| 手动添加任务 | 在 `tasks.json` 的 `features` 中新增一项（`status: "pending"`），然后运行 `run.sh` | 需求已明确，希望精确控制任务描述 |
+| 直接修改代码 | 在 Cursor 中改完并 `git commit`，再运行 `run.sh` | 小改动，自己改更快 |
+
+无论哪种方式，之后照常运行 `bash claude-auto-loop/run.sh` 即可继续。
+
 ---
 
 ## 运行机制详解
@@ -302,6 +320,17 @@ bash claude-auto-loop/setup.sh
 
 选择 GLM 时，setup.sh 会提示选择模型版本（GLM 4.7 / GLM 5）。**额度不足时可选 DeepSeek**：新用户有赠送余额，官网 <https://platform.deepseek.com/api_keys> 创建 API Key 即可。
 
+**DeepSeek 模型与成本**（setup 可选，或手动改 `config.env` 中的 `ANTHROPIC_MODEL`）：
+
+| 模型 | 输入（未命中缓存） | 输出 | 说明 |
+|------|-------------------|------|------|
+| deepseek-chat | 2 元/百万 tokens | 8 元/百万 tokens | 通用对话，速度快，**推荐日常使用** |
+| deepseek-reasoner | 4 元/百万 tokens | 16 元/百万 tokens | 深度推理（Chain-of-Thought），复杂任务更强，价格约 2 倍 |
+
+Agent 每轮「思考→工具调用→结果」= 1 次 API 请求，完整 Session 通常有数十次调用；按 token 计费，非按次数。
+
+setup 选择 DeepSeek 后，config.env 会写入 `ANTHROPIC_SMALL_FAST_MODEL`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`，run.sh 启动时会显式传 `--model`，确保统一走所选模型。
+
 ### MCP 工具（浏览器测试）
 
 如果项目有 Web 前端，建议安装 [Playwright MCP](https://github.com/microsoft/playwright-mcp)，Agent 将用它做端到端浏览器测试（click、snapshot、navigate 等 25+ 工具）。纯后端项目可跳过。
@@ -312,7 +341,17 @@ bash claude-auto-loop/setup.sh
 
 ### 运行时的进度提示
 
-run.sh 调用 Claude Code 时，会每 15 秒输出一次进度提示。通过 Claude Code 的 **PreToolUse** hook（`hooks/phase-signal.sh`）检测：当模型首次调用工具（Bash、Edit、Read 等）时，提示从「思考中」切换为「AI 编码中」。基于实际工具调用，无需时间估算。
+run.sh 调用 Claude Code 时，会每 15 秒输出一次进度提示。通过 Claude Code 的 **PreToolUse** hook（`hooks/phase-signal.py`）检测：当模型首次调用工具（Bash、Edit、Read 等）时，提示从「思考中」切换为「AI 编码中」。
+
+**6 步流程提示**：当 Agent 进入编码阶段后，提示会显示当前推断的 [CLAUDE.md](claude-auto-loop/CLAUDE.md) 工作流步骤，例如：
+- `AI 编码中 · 步骤1-恢复上下文`
+- `AI 编码中 · 步骤2-环境检查`
+- `AI 编码中 · 步骤3-选择任务`
+- `AI 编码中 · 步骤4-增量实现`
+- `AI 编码中 · 步骤5-测试验证`
+- `AI 编码中 · 步骤6-收尾`
+
+步骤由工具调用模式推断（如 Read profile/progress/tasks → 步骤1，Bash init.sh → 步骤2），可能有偏差，仅供参考。
 
 ### 常见问题
 
@@ -346,6 +385,12 @@ CLAUDE_DEBUG=verbose    # 完整每轮输出
 CLAUDE_DEBUG=mcp        # MCP 调用（含 Playwright）
 CLAUDE_DEBUG=api,mcp    # API + MCP
 ```
+
+**DeepSeek 后台仍显示 deepseek-reasoner 调用？**  
+本工具已按 DeepSeek 官方 Claude Code 接入要求配置，应避免 reasoner 混用。若仍看到 reasoner 调用，可检查：  
+1. `~/.claude/settings.json` 或项目 `.claude/settings.json` 中是否覆盖了 `model`（如设为 `opus`、`opusplan` 等）；  
+2. 确认 config.env 包含 `ANTHROPIC_SMALL_FAST_MODEL=deepseek-chat`；  
+3. 重新运行 `bash claude-auto-loop/setup.sh` 选择 DeepSeek 以生成完整配置。
 
 调试完注释或删掉该行即可恢复静默。
 
@@ -390,7 +435,7 @@ run.sh 使用 `-p`（headless）模式运行，Agent 自主完成任务，不暂
 | `setup.sh` | 交互式前置配置（模型选择 + MCP 工具安装） |
 | `cursor.mdc` | Cursor 规则文件：复制到 `.cursor/rules/` 使用 |
 | `requirements.example.md` | 需求文档模板：复制为 `requirements.md` 填写详细需求 |
-| `hooks/phase-signal.sh` | PreToolUse hook：首次工具调用时写入 `.phase`，供进度提示切换 |
+| `hooks/phase-signal.py` | PreToolUse hook：首次工具调用时写入 `.phase`，供进度提示切换 |
 | `hooks-settings.json` | Claude Code hooks 配置，run.sh 通过 `--settings` 加载 |
 | `README.md` | 本文件 |
 

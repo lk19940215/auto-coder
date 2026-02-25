@@ -102,6 +102,24 @@ cat claude-auto-loop/tasks.json            # Task list and statuses
 cat claude-auto-loop/project_profile.json  # Auto-detected project metadata
 ```
 
+### Requirements Changes and User Intervention
+
+**When requirements evolve:**
+
+- After editing `requirements.md`, the next `bash claude-auto-loop/run.sh` run will have the Agent read the latest content.
+- During context restoration, the Agent **conditionally** syncs requirements: only when `requirements.md` has changed will it compare with `tasks.json`. If it finds new requirements not yet covered, it will break them down into new tasks, append them to `tasks.json`, then proceed as usual.
+- The protocol permits the Agent to add new tasks (it only forbids deleting or modifying existing task descriptions), so requirement changes are reflected in the task list automatically.
+
+**When you personally spot something to improve, you have three options:**
+
+| Option | Action | When to use |
+|--------|--------|-------------|
+| Update requirements | Add new requirements or improvements to `requirements.md`, then run `bash claude-auto-loop/run.sh` | Let the Agent decompose and implement; **recommended** |
+| Add task manually | Add a new entry to `features` in `tasks.json` with `status: "pending"`, then run `run.sh` | Requirements are clear and you want precise control over the task description |
+| Edit code directly | Make changes in Cursor, `git commit`, then run `run.sh` | Small fixes you can do faster yourself |
+
+In any case, continue with `bash claude-auto-loop/run.sh` as usual.
+
 ---
 
 ## How It Works
@@ -299,6 +317,17 @@ Defaults to the official Claude API. For alternative models:
 | **DeepSeek** | `api.deepseek.com` official Anthropic-compatible API; new users get granted balance |
 | Custom | Any Anthropic-compatible BASE_URL |
 
+**DeepSeek model and cost** (choose in setup, or edit `ANTHROPIC_MODEL` in config.env):
+
+| Model | Input (cache miss) | Output | Notes |
+|-------|--------------------|--------|-------|
+| deepseek-chat | ¥2/M tokens | ¥8/M tokens | General use, fast; **recommended for daily use** |
+| deepseek-reasoner | ¥4/M tokens | ¥16/M tokens | Chain-of-thought reasoning, stronger on complex tasks; ~2× cost |
+
+Agent each round (think → tool call → result) = 1 API request; a full Session typically has dozens of calls. Billing is per token, not per call.
+
+After selecting DeepSeek in setup, config.env is written with `ANTHROPIC_SMALL_FAST_MODEL` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, and run.sh passes `--model` explicitly so all requests use the chosen model.
+
 ### MCP Tools (Browser Testing)
 
 For projects with a web frontend, consider installing [Playwright MCP](https://github.com/microsoft/playwright-mcp). The Agent will use it for end-to-end browser testing (click, snapshot, navigate, and 25+ other tools). Pure backend projects can skip this.
@@ -309,7 +338,9 @@ Configuration is saved in `config.env` (auto-added to `.gitignore`), only affect
 
 ### Progress Indicator During Run
 
-While run.sh invokes Claude Code, it prints a progress message every 15 seconds. Via Claude Code's **PreToolUse** hook (`hooks/phase-signal.sh`): when the model first calls a tool (Bash, Edit, Read, etc.), the message switches from "Thinking..." to "Coding...". Based on actual tool calls, no time-based heuristics.
+While run.sh invokes Claude Code, it prints a progress message every 15 seconds. Via Claude Code's **PreToolUse** hook (`hooks/phase-signal.py`): when the model first calls a tool (Bash, Edit, Read, etc.), the message switches from "Thinking..." to "Coding...".
+
+**6-step workflow display**: After the Agent enters the coding phase, the prompt shows the inferred step from [CLAUDE.md](claude-auto-loop/CLAUDE.md), e.g. `Coding · Step 4: Implementation`, `Coding · Step 5: Testing`. Steps are inferred from tool call patterns (e.g. Read profile/progress/tasks → Step 1, Bash init.sh → Step 2); slight inaccuracies are possible.
 
 ### Common Issues
 
@@ -335,6 +366,12 @@ CLAUDE_DEBUG=verbose    # full per-turn output
 CLAUDE_DEBUG=mcp        # MCP calls (incl. Playwright)
 CLAUDE_DEBUG=api,mcp    # API + MCP
 ```
+
+**DeepSeek usage still shows deepseek-reasoner calls?**  
+This tool follows DeepSeek's official Claude Code integration and should avoid reasoner mixing. If you still see reasoner:  
+1. Check `~/.claude/settings.json` or project `.claude/settings.json` for `model` overrides (e.g. `opus`, `opusplan`);  
+2. Confirm config.env has `ANTHROPIC_SMALL_FAST_MODEL=deepseek-chat`;  
+3. Re-run `bash claude-auto-loop/setup.sh` and select DeepSeek to regenerate full config.
 
 **Can I interact with Claude in CLI mode?**  
 run.sh uses `-p` (headless) so the Agent works autonomously. For interactive collaboration, use **Cursor IDE mode**: copy cursor.mdc to `.cursor/rules/` and run each conversation manually.
@@ -377,7 +414,7 @@ This tool builds on Anthropic's [long-running agent harness](https://www.anthrop
 | `setup.sh` | Interactive setup (model selection + MCP tool installation) |
 | `cursor.mdc` | Cursor rules file: copy to `.cursor/rules/` to use |
 | `requirements.example.md` | Requirements template: copy as `requirements.md` and fill in your detailed needs |
-| `hooks/phase-signal.sh` | PreToolUse hook: writes `.phase` on first tool call for progress indicator |
+| `hooks/phase-signal.py` | PreToolUse hook: writes `.phase` on first tool call for progress indicator |
 | `hooks-settings.json` | Claude Code hooks config, loaded via `--settings` |
 | `README.md` | Chinese documentation |
 | `README.en.md` | This file (English documentation) |

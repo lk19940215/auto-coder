@@ -8,7 +8,7 @@
 #   主流程 main()           - 交互选择 + 调用提供商写入
 #   配置写入 write_*        - write_config_header, append_config_common
 #   提供商 write_*_config   - Claude/GLM/DeepSeek/自定义
-#   MCP configure_mcp_tools - Playwright 等
+#   MCP configure_mcp_tools - Playwright + CLAUDE_DEBUG
 #
 # 配置保存到 config.env，run.sh 加载。含 API Key，已 gitignore。
 # DeepSeek 参考: https://api-docs.deepseek.com/zh-cn/guides/anthropic_api
@@ -38,7 +38,7 @@ main() {
     echo "============================================"
     echo ""
     echo "  第一步: 模型提供商配置"
-    echo "  第二步: MCP 工具配置（可选）"
+    echo "  第二步: MCP 工具 + 调试输出（可选）"
     echo ""
 
     # 检测已有配置
@@ -102,7 +102,7 @@ main() {
             local glm_model
             glm_model=$(read_glm_model | tr -d '\n')
             local api_key
-            api_key=$(read_api_key "智谱开放平台" "https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys" | tr -d '\n')
+            api_key=$(read_api_key "智谱开放平台" "https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys" "$([ "${MODEL_PROVIDER:-}" = "glm-bigmodel" ] && echo "${ANTHROPIC_API_KEY:-}")" | tr -d '\n')
             write_glm_config "glm-bigmodel" \
                 "https://open.bigmodel.cn/api/anthropic" \
                 "$api_key" \
@@ -113,7 +113,7 @@ main() {
             local glm_model
             glm_model=$(read_glm_model | tr -d '\n')
             local api_key
-            api_key=$(read_api_key "Z.AI 平台" "https://z.ai/manage-apikey/apikey-list" | tr -d '\n')
+            api_key=$(read_api_key "Z.AI 平台" "https://z.ai/manage-apikey/apikey-list" "$([ "${MODEL_PROVIDER:-}" = "glm-zai" ] && echo "${ANTHROPIC_API_KEY:-}")" | tr -d '\n')
             write_glm_config "glm-zai" \
                 "https://api.z.ai/api/anthropic" \
                 "$api_key" \
@@ -122,16 +122,21 @@ main() {
         4)
             # DeepSeek（按官方 Anthropic API 兼容文档配置）
             local api_key
-            api_key=$(read_api_key "DeepSeek" "https://platform.deepseek.com/api_keys" | tr -d '\n')
-            write_deepseek_config "$api_key"
+            api_key=$(read_api_key "DeepSeek" "https://platform.deepseek.com/api_keys" "$([ "${MODEL_PROVIDER:-}" = "deepseek" ] && echo "${ANTHROPIC_API_KEY:-}")" | tr -d '\n')
+            local ds_model
+            ds_model=$(read_deepseek_model | tr -d '\n')
+            write_deepseek_config "$api_key" "$ds_model"
             ;;
         5)
             # 自定义
             local base_url api_key
-            echo "请输入 Anthropic 兼容的 BASE_URL:"
+            local default_url=""
+            [ "${MODEL_PROVIDER:-}" = "custom" ] && [ -n "${ANTHROPIC_BASE_URL:-}" ] && default_url="$ANTHROPIC_BASE_URL"
+            echo "请输入 Anthropic 兼容的 BASE_URL${default_url:+（回车保留: $default_url）}:"
             read -p "  URL: " base_url
+            base_url="${base_url:-$default_url}"
             echo ""
-            api_key=$(read_api_key "自定义平台")
+            api_key=$(read_api_key "自定义平台" "" "$([ "${MODEL_PROVIDER:-}" = "custom" ] && echo "${ANTHROPIC_API_KEY:-}")" | tr -d '\n')
             write_custom_config "$base_url" "$api_key"
             ;;
     esac
@@ -159,12 +164,17 @@ main() {
 }
 
 # ============ 读取 API Key ============
-# 用法: read_api_key "平台名称" "获取入口URL"（URL 可选）
-# 注意：提示输出到 stderr，这样在 api_key=$(read_api_key ...) 时用户仍能看到
+# 用法: read_api_key "平台名称" "获取入口URL" ["已有Key用于自动填充"]
+# 重新配置且选择相同提供商时，传入已有 Key，用户回车即保留
 read_api_key() {
     local platform="$1"
     local api_url="${2:-}"
-    echo "请输入 $platform 的 API Key:" >&2
+    local default_key="${3:-}"
+    if [ -n "$default_key" ]; then
+        echo "保留当前 API Key 请直接回车，或输入新 Key:" >&2
+    else
+        echo "请输入 $platform 的 API Key:" >&2
+    fi
     if [ -n "$api_url" ]; then
         echo -e "  ${BLUE}获取入口: $api_url${NC}" >&2
         echo "" >&2
@@ -172,6 +182,10 @@ read_api_key() {
     local key
     read -p "  API Key: " key
     if [ -z "$key" ]; then
+        if [ -n "$default_key" ]; then
+            echo "$default_key"
+            return
+        fi
         echo "API Key 不能为空" >&2
         exit 1
     fi
@@ -184,6 +198,12 @@ read_api_key() {
 write_config_header() {
     local provider="$1"
     local desc="${2:-}"
+    # 重新配置时备份旧 config，避免覆盖丢失
+    if [ -f "$CONFIG_FILE" ]; then
+        local backup="${CONFIG_FILE}.bak.$(date +%Y%m%d%H%M%S)"
+        cp "$CONFIG_FILE" "$backup"
+        log_info "已备份旧配置到: $backup"
+    fi
     cat > "$CONFIG_FILE" << EOF
 # Claude Auto Loop 模型配置
 # 由 setup.sh 生成，请勿提交到 git（包含 API Key）
@@ -226,6 +246,24 @@ read_glm_model() {
     done
 }
 
+read_deepseek_model() {
+    echo "请选择 DeepSeek 模型:" >&2
+    echo "" >&2
+    echo "  1) deepseek-chat   - 通用对话，速度快" >&2
+    echo "  2) deepseek-reasoner - 深度推理，更适合复杂任务" >&2
+    echo "" >&2
+    local model_choice
+    while true; do
+        read -p "选择 [1-2，默认 1]: " model_choice
+        model_choice="${model_choice:-1}"
+        case $model_choice in
+            1) echo "deepseek-chat"; break ;;
+            2) echo "deepseek-reasoner"; break ;;
+            *) echo "请输入 1 或 2" >&2 ;;
+        esac
+    done
+}
+
 # --- 提供商: GLM (智谱 / Z.AI) ---
 write_glm_config() {
     local provider="${1:-glm-bigmodel}"
@@ -249,17 +287,42 @@ write_glm_config() {
 # 参考: https://api-docs.deepseek.com/zh-cn/guides/anthropic_api
 write_deepseek_config() {
     local api_key="$1"
+    local model="deepseek-chat"
+    if [ "$#" -ge 2 ] && [ -n "${2+x}" ]; then
+        model="$2"
+    fi
 
-    write_config_header "DeepSeek" "模型: deepseek-chat | API_TIMEOUT_MS=600000 防止长输出超时（10分钟）"
+    write_config_header "DeepSeek" "模型: ${model} | API_TIMEOUT_MS=600000 防止长输出超时（10分钟）"
     {
         echo "MODEL_PROVIDER=deepseek"
-        echo "ANTHROPIC_MODEL=deepseek-chat"
+        echo "# 注意：若选择 deepseek-reasoner，费用约为 chat 的 5-10 倍"
+        echo "ANTHROPIC_MODEL=${model}"
         echo "ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic"
         echo "ANTHROPIC_API_KEY=$api_key"
         echo "ANTHROPIC_AUTH_TOKEN=$api_key"
+        echo ""
+        echo "# Claude Code 配置"
+        echo "ANTHROPIC_SMALL_FAST_MODEL=${model}"
+        echo "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
+        
+        if [[ "${model}" != *reasoner* ]]; then
+            echo ""
+            echo "# [DeepSeek Chat 降本策略]"
+            echo "# 为了防止 Claude Code 客户端发送 'thinking' 参数（导致 DeepSeek 按 Reasoner 计费），"
+            echo "# 我们通过 run.sh 将模型伪装为 'claude-3-haiku-20240307'。"
+            echo "# Claude Code 认为 Haiku 不支持思考，因此不发 thinking 参数。"
+            echo "# DeepSeek 收到 Haiku 请求后，会自动 Fallback 到默认的 deepseek-chat (V3)。"
+            echo "# 最终效果：使用 V3 模型，但零 Reasoner 费用。"
+            echo "# ANTHROPIC_THINKING_BUDGET=0"
+        else
+            echo ""
+            echo "# [DeepSeek Reasoner 模式]"
+            echo "# 允许使用 Thinking 功能"
+            echo "ANTHROPIC_DEFAULT_OPUS_MODEL=deepseek-reasoner"
+        fi
     } >> "$CONFIG_FILE"
     append_config_common 600000
-    log_ok "已配置为 DeepSeek（Anthropic 兼容，按官方文档）"
+    log_ok "已配置为 DeepSeek (${model}，Anthropic 兼容，按官方文档）"
     log_info "BASE_URL: https://api.deepseek.com/anthropic"
 }
 
@@ -334,12 +397,33 @@ configure_mcp_tools() {
 
         log_info "已跳过 Playwright MCP 安装"
     fi
-    # 可选：调试输出（随时可改，无需重跑 setup）
-    if ! grep -q "CLAUDE_DEBUG" "$CONFIG_FILE" 2>/dev/null; then
-        echo "" >> "$CONFIG_FILE"
-        echo "# 可选：Claude 调试（空则静默；verbose=完整输出, mcp=MCP调用）" >> "$CONFIG_FILE"
-        echo "# CLAUDE_DEBUG=verbose" >> "$CONFIG_FILE"
-    fi
+
+    # 第三步：Claude 调试输出
+    echo ""
+    echo "是否开启 Claude 调试输出（便于排查问题，输出较多）？"
+    echo ""
+    echo "  1) 否 - 静默（默认，推荐）"
+    echo "  2) 是 - verbose（完整每轮输出）"
+    echo "  3) 是 - mcp（MCP 调用，如 Playwright Click）"
+    echo ""
+
+    local debug_choice
+    while true; do
+        read -p "选择 [1-3，默认 1]: " debug_choice
+        debug_choice="${debug_choice:-1}"
+        case $debug_choice in
+            1|2|3) break ;;
+            *) echo "请输入 1-3" ;;
+        esac
+    done
+
+    echo "" >> "$CONFIG_FILE"
+    echo "# Claude 调试（config.env 中可随时修改）" >> "$CONFIG_FILE"
+    case $debug_choice in
+        2) echo "CLAUDE_DEBUG=verbose" >> "$CONFIG_FILE"; log_info "已启用 CLAUDE_DEBUG=verbose" ;;
+        3) echo "CLAUDE_DEBUG=mcp" >> "$CONFIG_FILE"; log_info "已启用 CLAUDE_DEBUG=mcp" ;;
+        *) echo "# CLAUDE_DEBUG=verbose  # 取消注释可开启" >> "$CONFIG_FILE" ;;
+    esac
 }
 
 # ============ 确保 .gitignore 包含 config.env ============
