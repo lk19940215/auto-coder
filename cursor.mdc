@@ -20,8 +20,15 @@ alwaysApply: true
    - 收尾（git commit + progress.txt + session_result.json）
 
 核心铁律：
-- 一次只做一个功能，不得跳过状态机
+- 大型功能一次只做一个；infra 类小任务可批量完成 2-3 个
+- 不得跳过状态机
 - 不得修改 requirements.md（这是用户的需求输入）
 - 每次结束必须写 claude-auto-loop/session_result.json
 - 每次结束必须更新 claude-auto-loop/progress.txt
 - 每次结束必须 git commit
+
+效率铁律：
+- 已存在的文件/目录不要重复创建，跳过已完成的步骤
+- 环境已就绪时 init.sh 会自动跳过已安装的依赖；非服务类任务可跳过健康检查
+- 批量读取、批量修改，禁止碎片化操作
+- 测试与改动规模成正比：infra 类仅验证语法和端点，不逐个 curl 所有路由

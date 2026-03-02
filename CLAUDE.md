@@ -19,7 +19,7 @@
 
 ## 铁律（不可违反）
 
-1. **一次只做一个功能**：不要试图一口气完成所有任务
+1. **按规模分批执行**：大型功能（含业务逻辑）一次只做一个；`category: "infra"` 的小型任务（配置、脚手架、Docker 等）可一次完成 2-3 个相关任务，但所有批量任务必须在 session 结束前全部到达 `done` 或 `failed`
 2. **不得删除或修改 tasks.json 中已有任务的描述**：只能修改 `status` 字段；允许根据 requirements.md 新增任务
 3. **不得跳过状态**：必须按照状态机的合法迁移路径更新
 4. **不得过早标记 done**：只有通过端到端测试才能标记
@@ -163,18 +163,15 @@ pending ──→ in_progress ──→ testing ──→ done
 
 ### 第一步：恢复上下文
 
-1. 运行 `pwd` 确认工作目录
-2. 读取 `claude-auto-loop/project_profile.json` 了解项目概况，注意 `existing_docs` 列出项目中可用文档路径（**文档内容在第四步实现前才按需读取**）
-3. 读取 `claude-auto-loop/progress.txt` 了解最近的工作进展
-4. 读取 `claude-auto-loop/tasks.json` 查看所有任务的状态
-5. 运行 `git log --oneline -20` 查看最近提交
-6. 如果项目根目录存在 `requirements.md`，读取用户的详细需求和偏好（技术约束、样式要求等），作为本次会话的参考依据
-7. **需求同步（条件触发）**：若 `requirements.md` 或 `claude-auto-loop/requirements_hash.current` 不存在，则跳过本步。否则读取 `requirements_hash.current`（由 harness 在会话开始前写入）和 `sync_state.json`（若存在）。若当前 hash 与 `sync_state.json` 中的 `last_requirements_hash` 不同，或 `sync_state.json` 不存在，则执行需求同步：对比 `requirements.md` 与 `tasks.json`，若发现功能需求中有尚未被 `tasks.json` 覆盖的新项，将其拆解为新任务追加到 `features` 数组（`status: "pending"`），保持与既有任务格式一致；同步完成后，写入或更新 `sync_state.json`，包含 `last_requirements_hash` 和 `last_synced_at`（ISO 时间戳）。若 hash 相同则跳过需求同步
+1. 批量读取以下文件（一次工具调用）：`claude-auto-loop/project_profile.json`、`claude-auto-loop/progress.txt`、`claude-auto-loop/tasks.json`
+2. 如果 `progress.txt` 不存在或内容为空，运行 `git log --oneline -20` 补充上下文；否则跳过（progress.txt 已包含 commit 信息）
+3. 如果项目根目录存在 `requirements.md`，读取用户的详细需求和偏好（技术约束、样式要求等），作为本次会话的参考依据
+4. **需求同步（条件触发）**：若 `requirements.md` 或 `claude-auto-loop/requirements_hash.current` 不存在，则跳过本步。否则读取 `requirements_hash.current`（由 harness 在会话开始前写入）和 `sync_state.json`（若存在）。若当前 hash 与 `sync_state.json` 中的 `last_requirements_hash` 不同，或 `sync_state.json` 不存在，则执行需求同步：对比 `requirements.md` 与 `tasks.json`，若发现功能需求中有尚未被 `tasks.json` 覆盖的新项，将其拆解为新任务追加到 `features` 数组（`status: "pending"`），保持与既有任务格式一致；同步完成后，写入或更新 `sync_state.json`，包含 `last_requirements_hash` 和 `last_synced_at`（ISO 时间戳）。若 hash 相同则跳过需求同步
 
 ### 第二步：环境与健康检查
 
-1. 运行 `bash claude-auto-loop/init.sh` 确保开发环境就绪
-2. 根据 `project_profile.json` 中的 `services[].health_check` 逐个检查服务
+1. 运行 `bash claude-auto-loop/init.sh` 确保开发环境就绪（init.sh 是幂等设计，已安装的依赖和已启动的服务会自动跳过）
+2. 根据 `project_profile.json` 中的 `services[].health_check` 逐个检查服务。**如果当前任务不涉及运行时服务（如纯文档、纯配置、纯静态文件修改），可跳过服务健康检查**
 3. 如果发现已有 Bug，**先修复再开发新功能**
 
 ### 第三步：选择任务
@@ -183,7 +180,7 @@ pending ──→ in_progress ──→ testing ──→ done
    - 优先选 `status: "failed"` 的任务（需要修复）
    - 其次选 `status: "pending"` 的任务（新功能）
 2. 检查 `depends_on`：只选依赖已全部 `done` 的任务
-3. **一次只选一个任务**
+3. **一次只选一个任务**（`category: "infra"` 的小型任务可选 2-3 个相关任务批量执行，但所有任务必须在 session 结束前全部到达 `done` 或 `failed`）
 4. 将选中任务的 `status` 改为 `in_progress`
 
 ### 第四步：增量实现
@@ -196,7 +193,7 @@ pending ──→ in_progress ──→ testing ──→ done
    - **批量读取**：一次性读取所有相关的代码文件。
    - **批量修改**：规划好修改方案后，一次性执行多个文件的编辑。
    - **减少交互**：尽可能在一次工具调用中完成多步逻辑。
-5. **不要试图同时实现多个功能**
+5. **跳过已完成的步骤**：如果任务 `steps` 中某些步骤已被扫描阶段或之前的 session 完成（文件已存在且内容正确），直接跳过，不要重复创建已有的目录结构、入口文件或配置文件
 6. **实现前按需读相关文档**（文档读取的唯一时机）：在开始编码前，从 `project_profile.json` 的 `existing_docs` 中，按当前任务的 category 和 steps 读取**与任务相关**的文档（如涉及 API 则读 API 文档、涉及架构则读架构文档），了解编码规范、API 约定，避免实现偏离项目既有风格
 7. **按需维护文档**：**仅当功能对外行为发生变化时**才更新 README 或 docs，例如：新增用户可见功能、新增 API、配置方式变更、使用说明变化。以下情况**不强制**更新文档：内部重构、变量重命名、性能优化、仅修复既有功能的 Bug
 
@@ -219,6 +216,7 @@ pending ──→ in_progress ──→ testing ──→ done
 - 如果没有测试框架 → 通过调用入口函数或脚本验证输出
 
 **测试效率（避免无效循环）**：
+- **测试与改动规模成正比**：infra/配置类任务仅需验证语法正确（import 不报错）和关键端点可达，无需逐个 curl 所有路由
 - **先验证数据再验证 UI**：如果组件依赖数据（如推荐列表），先确认数据源是否有输出，再检查页面渲染
 - **curl 测试最多 3 次**：同一 URL 的 curl 检查不超过 3 次。如果 3 次都找不到预期内容，换一个有数据的测试用例
 - **禁止创建独立测试文件**：不要创建 `test-*.js` 或 `test-*.html`。使用项目已有的测试框架或直接 curl / Playwright 验证

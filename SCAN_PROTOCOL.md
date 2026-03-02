@@ -44,6 +44,8 @@
 
 根据用户需求（优先参考 `requirements.md`，其次参考 harness 传入的需求文本），将功能分解为具体任务（格式见 CLAUDE.md 中的 tasks.json 章节）。如果 `requirements.md` 中有明确的功能列表，按其内容拆分；如果只有模糊描述，自行合理拆分。
 
+**重要：避免任务与脚手架重叠**。步骤 2B 中已创建的代码（目录结构、入口文件、配置文件、依赖文件、README）不应重复出现在 tasks.json 中。tasks.json 的第一个任务应从脚手架之后的「第一个有业务逻辑的功能」开始。infra 类任务（如 Docker 配置、CI/CD）应合并为尽量少的条目。
+
 ## 步骤 4：收尾
 
 1. 创建 `progress.txt`，记录初始化摘要

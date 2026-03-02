@@ -392,8 +392,8 @@ run_coding_session() {
     fi
 
     # CLAUDE.md 已通过 --append-system-prompt-file 注入 system prompt，inline prompt 只含 session 变量
-    local coding_prompt="Session ${session_num}。执行 6 步流程，一次只做一个功能。
-高效执行：批量读取、批量修改，减少碎片化工具调用。
+    local coding_prompt="Session ${session_num}。执行 6 步流程。
+高效执行：批量读取、批量修改，已存在的文件跳过，减少碎片化工具调用。
 ${mcp_hint:+可用工具: $mcp_hint
 }完成后写入 session_result.json。${retry_context}"
 
