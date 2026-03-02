@@ -6,6 +6,14 @@
 #   首次运行（详细需求）: 创建 requirements.md 后运行 bash claude-auto-loop/run.sh
 #   首次运行（快捷模式）: bash claude-auto-loop/run.sh "你的需求描述"
 #   继续运行:             bash claude-auto-loop/run.sh
+#   观测模式:             bash claude-auto-loop/run.sh --view
+#   限制 session 数:      bash claude-auto-loop/run.sh --max 10
+#   控制暂停频率:         bash claude-auto-loop/run.sh --max 10 --pause 3
+#
+# 参数:
+#   --view           交互式观测模式，实时显示 Agent 决策过程
+#   --max N          最大 session 数（默认 50）
+#   --pause N        每 N 个 session 暂停确认（默认 5）
 #
 # 执行顺序：
 #   1. 加载 config.env（若存在，由 setup.sh 生成）
@@ -15,8 +23,9 @@
 #   5. 所有任务 done 时退出
 #
 # 关键技术：
-#   - script -q /dev/null：创建 PTY 强制实时输出（解决非 TTY 缓冲）
-#   - 后台运行 + CLAUDE_PID + trap：确保 Ctrl+C 能正确终止并退出
+#   - 2>&1 | tee：实时终端输出 + 日志记录（学习 auto-coding-agent-demo 模式）
+#   - --append-system-prompt-file：将 CLAUDE.md 注入 system prompt，保证 Agent 协议加载
+#   - --allowedTools：显式工具白名单，限制 Agent 可用工具范围
 #   - --permission-mode bypassPermissions：允许 Agent 无需确认即可创建/编辑文件
 #   - PreToolUse hook：首次工具调用时写入 .phase，进度提示从「思考中」切至「AI 编码中」
 #
@@ -26,12 +35,12 @@
 
 set -euo pipefail
 
-# ============ 配置 ============
-MAX_SESSIONS=50         # 最大会话数（安全上限）
-CLAUDE_PID=""            # 当前 claude 子进程 PID，供 trap 终止用
+# ============ 配置（可通过 CLI 参数覆盖） ============
+MAX_SESSIONS=50          # 最大会话数（--max N 覆盖）
 THINKING_PID=""          # 思考中提示的 PID，供 trap 终止用
 MAX_RETRY=3              # 每个任务最大重试次数
-PAUSE_EVERY=5            # 每 N 个会话暂停确认
+PAUSE_EVERY=5            # 每 N 个会话暂停确认（--pause N 覆盖）
+ALLOWED_TOOLS="Read,Edit,Write,Bash,Glob,Grep"  # Agent 可用工具白名单
 
 # ============ 路径与默认值 ============
 # CLAUDE_EXTRA_FLAGS 在 main() 中根据 config.env 的 CLAUDE_DEBUG 设置；此处预先初始化避免 set -u 下 unbound variable
@@ -46,6 +55,7 @@ SESSION_RESULT="$SCRIPT_DIR/session_result.json"
 PROFILE="$SCRIPT_DIR/project_profile.json"
 REQUIREMENTS_HASH_FILE="$SCRIPT_DIR/requirements_hash.current"
 CLAUDE_MD="$SCRIPT_DIR/CLAUDE.md"
+SCAN_PROTOCOL_MD="$SCRIPT_DIR/SCAN_PROTOCOL.md"
 VALIDATE_SH="$SCRIPT_DIR/validate.sh"
 PHASE_FILE="$SCRIPT_DIR/.phase"
 PHASE_STEP_FILE="$SCRIPT_DIR/.phase_step"
@@ -107,6 +117,11 @@ check_prerequisites() {
 
     if [ ! -f "$CLAUDE_MD" ]; then
         log_error "CLAUDE.md 不存在: $CLAUDE_MD"
+        exit 1
+    fi
+
+    if [ ! -f "$SCAN_PROTOCOL_MD" ]; then
+        log_error "SCAN_PROTOCOL.md 不存在: $SCAN_PROTOCOL_MD"
         exit 1
     fi
 
@@ -276,54 +291,33 @@ run_scan() {
     log_info "首次 API 响应可能需要 1-2 分钟，PreToolUse hook 将在首次工具调用时切换为「AI 编码中」"
     echo "--------------------------------------------"
     start_thinking_indicator
-    # 使用 script 创建 PTY，避免非交互式运行时输出被缓冲导致长时间无显示
-    # 后台运行以便 trap 能通过 CLAUDE_PID 终止，确保 Ctrl+C 可退出
-    # 使用 bypassPermissions 允许 Agent 无需交互确认即可创建/编辑文件
-    # --settings 加载 PreToolUse hook，首次工具调用时写入 .phase="coding"，供进度指示器切换
-    # CLAUDE_EXTRA_FLAGS 由 config.env 的 CLAUDE_DEBUG 控制，可输出 MCP/API 等调试日志
-    script -q "$LOG_DIR/scan_$(date +%s).log" claude "${CLAUDE_MODEL_FLAGS[@]}" "${CLAUDE_EXTRA_FLAGS[@]}" --permission-mode bypassPermissions --settings "$SCRIPT_DIR/hooks-settings.json" -p "
-你是项目初始化 Agent。请严格按照 claude-auto-loop/CLAUDE.md 中的「项目扫描协议」执行。
+
+    local scan_prompt="你是项目初始化 Agent。
 
 项目类型: $project_type
 用户需求: $requirement
 
-执行步骤:
-1. 阅读 claude-auto-loop/CLAUDE.md 了解完整的扫描协议和文件格式
+按照「项目扫描协议」执行：扫描项目、生成 profile 和 init.sh、分解任务到 tasks.json。
+完成后写入 session_result.json 并 git commit。"
 
-2. 如果是旧项目 (existing):
-   - 按照扫描清单检查项目文件
-   - 生成 claude-auto-loop/project_profile.json（严格按照 CLAUDE.md 中的格式）
-   - 基于扫描结果生成 claude-auto-loop/init.sh（严格按照 CLAUDE.md 中的 init.sh 生成规则）
+    # 扫描 session 需要 CLAUDE.md（通用协议）+ SCAN_PROTOCOL.md（扫描专用）
+    # 拼接为临时文件注入 system prompt
+    local combined_prompt
+    combined_prompt=$(mktemp)
+    cat "$CLAUDE_MD" "$SCAN_PROTOCOL_MD" > "$combined_prompt"
 
-3. 如果是新项目 (new):
-   - 根据需求设计技术架构
-   - 创建项目目录结构和基础文件
-   - 生成 README.md
-   - 然后执行旧项目的扫描流程生成 profile 和 init.sh
-
-4. 将需求分解为具体功能点，生成 claude-auto-loop/tasks.json
-   - 严格按照 CLAUDE.md 中定义的 tasks.json 格式
-   - 所有任务初始 status 为 \"pending\"
-   - 功能点要足够细粒度，每个功能应能在一个会话内完成
-   - 设置合理的 priority（数字越小优先级越高）
-   - 设置正确的 depends_on 依赖关系
-   - 最后一个 step 必须包含验证方法（如何测试这个功能）
-
-5. 创建 claude-auto-loop/progress.txt，记录本次初始化的摘要
-
-6. 写入 claude-auto-loop/session_result.json (含 {"session_result": "SUCCESS", "status_after": "pending", "summary": "初始化完成"})
-
-7. Git 提交: git add -A && git commit -m 'init: 项目扫描 + 任务分解'
-
-关键要求:
-- project_profile.json 中所有字段必须基于实际文件扫描，禁止猜测
-- init.sh 必须幂等（已运行的服务不重复启动）
-" &
-    CLAUDE_PID=$!
-    wait $CLAUDE_PID
-    local scan_exit=$?
+    # 2>&1 | tee 实时终端输出 + 日志记录（前台管道，Ctrl+C 自动终止）
+    set +e
+    claude "${CLAUDE_MODEL_FLAGS[@]}" "${CLAUDE_EXTRA_FLAGS[@]}" \
+        --permission-mode bypassPermissions \
+        --settings "$SCRIPT_DIR/hooks-settings.json" \
+        --append-system-prompt-file "$combined_prompt" \
+        -p "$scan_prompt" \
+        2>&1 | tee "$LOG_DIR/scan_$(date +%s).log"
+    local scan_exit=${PIPESTATUS[0]}
+    set -e
+    rm -f "$combined_prompt"
     stop_thinking_indicator
-    CLAUDE_PID=""
 
     echo "--------------------------------------------"
     # 验证关键文件是否生成
@@ -388,50 +382,33 @@ run_coding_session() {
     local mcp_hint=""
     mcp_hint=$(build_mcp_hint 2>/dev/null || true)
 
-    # 先构建 prompt 再传入，避免 heredoc 中变量展开导致的 unbound variable
-    local coding_prompt
-    coding_prompt="按照 claude-auto-loop/CLAUDE.md 中定义的工作流程执行。这是 Session ${session_num}。
+    # 构建失败重试上下文（Step 4: 注入上次失败原因）
+    local retry_context=""
+    if [ "$consecutive_failures" -gt 0 ] && [ -f "$LOG_DIR/validate_session_$((session_num - 1)).log" ]; then
+        local fail_reason
+        fail_reason=$(grep -E "FAIL|INVALID|ERROR" "$LOG_DIR/validate_session_$((session_num - 1)).log" | head -3)
+        retry_context="
+注意：上次会话校验失败，原因：$fail_reason。请避免同样的问题。"
+    fi
 
-严格执行 6 步流程：
-1. 恢复上下文（读取 project_profile.json、progress.txt、tasks.json、git log）
-2. 环境与健康检查（运行 init.sh，检查服务）
-3. 选择下一个任务（优先 failed，其次 pending；检查依赖）
-4. 增量实现（一次只做一个功能）
-5. 测试验证（端到端测试，按状态机更新 status）
-6. 收尾（git commit + 更新 progress.txt + 写 session_result.json）
-
-高效执行要求：
-- **批量操作 (Batch Operations)**：严禁碎片的工具调用。请将相关文件的读取合并为一次 Read 调用；将多个文件的修改合并为一次 Edit 调用；思考与操作合并进行。
-- **减少交互**：不要每一步都停下来思考，规划好后一次性执行多个步骤。
-
-文档要求：
-- 实现前按需读取 project_profile.json 中 existing_docs 与当前任务相关的文档（仅第四步读取）
-- 仅当功能对外行为变更时才更新 README 或 docs；内部重构、Bug 修复不强制
-${mcp_hint:+
-
-可用工具提示:
-${mcp_hint}}
-
-特别注意：
-- 你必须在结束前写入 claude-auto-loop/session_result.json，格式如下：
-\`\`\`json
-{
-  "session_result": "SUCCESS",  // 或 FAILURE
-  "status_after": "done",       // 任务完成后的状态 (done/failed/testing)
-  "summary": "简要总结本次变更"
-}
-\`\`\`
-- 严格遵守状态机迁移规则，不得跳步"
+    # CLAUDE.md 已通过 --append-system-prompt-file 注入 system prompt，inline prompt 只含 session 变量
+    local coding_prompt="Session ${session_num}。执行 6 步流程，一次只做一个功能。
+高效执行：批量读取、批量修改，减少碎片化工具调用。
+${mcp_hint:+可用工具: $mcp_hint
+}完成后写入 session_result.json。${retry_context}"
 
     set +e
-    # CLAUDE_EXTRA_FLAGS 由 config.env 的 CLAUDE_DEBUG 控制，可输出 MCP/API 等调试日志
     local session_log="$LOG_DIR/session_${session_num}_$(date +%s).log"
-    script -q "$session_log" claude "${CLAUDE_MODEL_FLAGS[@]}" "${CLAUDE_EXTRA_FLAGS[@]}" --permission-mode bypassPermissions --settings "$SCRIPT_DIR/hooks-settings.json" -p "$coding_prompt" &
-    CLAUDE_PID=$!
-    wait $CLAUDE_PID
-    local claude_exit=$?
+    claude "${CLAUDE_MODEL_FLAGS[@]}" "${CLAUDE_EXTRA_FLAGS[@]}" \
+        --permission-mode bypassPermissions \
+        --settings "$SCRIPT_DIR/hooks-settings.json" \
+        --append-system-prompt-file "$CLAUDE_MD" \
+        --verbose \
+        --allowedTools "$ALLOWED_TOOLS" \
+        -p "$coding_prompt" \
+        2>&1 | tee "$session_log"
+    local claude_exit=${PIPESTATUS[0]}
     stop_thinking_indicator
-    CLAUDE_PID=""
     echo "--------------------------------------------"
     set -e
 
@@ -442,11 +419,48 @@ ${mcp_hint}}
     return "${claude_exit:-0}"
 }
 
+# ============ 观测模式（交互式单次 session） ============
+run_view_session() {
+    local requirement="${1:-}"
+
+    local system_prompt_content
+    local initial_prompt
+
+    if [ ! -f "$PROFILE" ] || [ ! -f "$TASKS_FILE" ]; then
+        system_prompt_content="$(cat "$CLAUDE_MD" "$SCAN_PROTOCOL_MD")"
+        local project_type="new"
+        has_code_files && project_type="existing"
+        initial_prompt="你是项目初始化 Agent。项目类型: $project_type。用户需求: $requirement。按照「项目扫描协议」执行。"
+    else
+        system_prompt_content="$(cat "$CLAUDE_MD")"
+        local mcp_hint=""
+        mcp_hint=$(build_mcp_hint 2>/dev/null || true)
+        initial_prompt="执行 6 步流程，完成下一个任务。${mcp_hint:+ 可用工具: $mcp_hint}"
+    fi
+
+    claude "${CLAUDE_MODEL_FLAGS[@]}" "${CLAUDE_EXTRA_FLAGS[@]}" \
+        --permission-mode bypassPermissions \
+        --settings "$SCRIPT_DIR/hooks-settings.json" \
+        --append-system-prompt "$system_prompt_content" \
+        "$initial_prompt"
+}
+
 # ============ 主流程 ============
 main() {
     echo ""
+    # ============ 解析 CLI 参数 ============
+    local view_mode=false
+    while [[ "${1:-}" == --* ]]; do
+        case "$1" in
+            --view)  view_mode=true; shift ;;
+            --max)   MAX_SESSIONS="${2:?--max 需要参数}"; shift 2 ;;
+            --pause) PAUSE_EVERY="${2:?--pause 需要参数}"; shift 2 ;;
+            *)       log_error "未知参数: $1"; exit 1 ;;
+        esac
+    done
+
     echo "============================================"
-    echo "  Claude Auto Loop"
+    echo "  Claude Auto Loop${view_mode:+ (观测模式)}"
     echo "============================================"
     echo ""
 
@@ -456,8 +470,9 @@ main() {
     
     # ... (rest of main function)
 
-    # 信号处理：Ctrl+C / kill 时优雅退出（终止 claude 与思考提示后退出）
-    trap 'if [ -n "$THINKING_PID" ]; then kill $THINKING_PID 2>/dev/null; wait $THINKING_PID 2>/dev/null; fi; if [ -n "$CLAUDE_PID" ]; then kill -TERM $CLAUDE_PID 2>/dev/null; pkill -P $CLAUDE_PID -TERM 2>/dev/null; wait $CLAUDE_PID 2>/dev/null; fi; echo ""; log_warn "收到中断信号，正在安全退出..."; log_info "下次运行 bash claude-auto-loop/run.sh 即可恢复"; exit 130' INT TERM
+    # 信号处理：Ctrl+C / kill 时优雅退出
+    # 前台管道模式下 Ctrl+C 自动 SIGINT claude+tee，只需清理 THINKING_PID
+    trap 'if [ -n "$THINKING_PID" ]; then kill $THINKING_PID 2>/dev/null; wait $THINKING_PID 2>/dev/null; fi; echo ""; log_warn "收到中断信号，正在安全退出..."; log_info "下次运行 bash claude-auto-loop/run.sh 即可恢复"; exit 130' INT TERM
 
     # 加载模型配置（如果存在）；CLAUDE_EXTRA_FLAGS 已在脚本开头初始化
     if [ -f "$SCRIPT_DIR/config.env" ]; then
@@ -534,6 +549,9 @@ main() {
 
     check_prerequisites
 
+    # 根据 MCP 配置扩展 ALLOWED_TOOLS 白名单
+    [ "${MCP_PLAYWRIGHT:-false}" = "true" ] && ALLOWED_TOOLS="$ALLOWED_TOOLS,mcp__playwright__*"
+
     # ---------- 读取需求（优先 requirements.md，其次 CLI 参数） ----------
     local requirement=""
     local req_file="$PROJECT_ROOT/requirements.md"
@@ -542,6 +560,15 @@ main() {
         log_ok "已读取需求文件: requirements.md"
     else
         requirement="${1:-}"
+    fi
+
+    # ---------- 观测模式：交互式单次 session，然后退出 ----------
+    if [ "$view_mode" = true ]; then
+        log_info "观测模式：交互式运行，实时显示工具调用和决策过程"
+        log_info "退出：Ctrl+C 或输入 /exit"
+        echo "--------------------------------------------"
+        run_view_session "$requirement"
+        exit 0
     fi
 
     # ---------- 初始化阶段（带重试） ----------

@@ -1,8 +1,13 @@
 <!-- 
   This file is the Agent Protocol for Claude Auto Loop.
-  It is read by Claude Code / Cursor at the start of each session.
+  It is injected into the system prompt via --append-system-prompt-file at the start of each session.
   The instructions are written in Chinese, which Claude handles natively.
   See README.en.md for the English user guide.
+
+  Content order is optimized for LLM attention (U-shaped curve):
+  TOP = identity + hard constraints (primacy zone)
+  MIDDLE = reference data (lower attention, looked up on demand)
+  BOTTOM = actionable workflow (recency zone, highest behavioral compliance)
 -->
 
 # Agent 协议
@@ -12,12 +17,30 @@
 你是一个长时间运行的编码 Agent，负责增量开发当前项目。
 你的工作跨越多个会话（context window），每个会话你需要快速恢复上下文并推进一个功能。
 
+## 铁律（不可违反）
+
+1. **一次只做一个功能**：不要试图一口气完成所有任务
+2. **不得删除或修改 tasks.json 中已有任务的描述**：只能修改 `status` 字段；允许根据 requirements.md 新增任务
+3. **不得跳过状态**：必须按照状态机的合法迁移路径更新
+4. **不得过早标记 done**：只有通过端到端测试才能标记
+5. **每次结束前必须 git commit**：确保代码不丢失
+6. **每次结束前必须更新 progress.txt**：确保下个会话能快速恢复上下文
+7. **每次结束前必须写 session_result.json**：这是 harness 判断你工作成果的唯一依据
+8. **发现 Bug 优先修复**：先确保现有功能正常，再开发新功能
+9. **按需维护文档**：仅当功能对外行为发生变化时才更新 README 或 docs；内部重构、Bug 修复不强制更新
+10. **不得修改 CLAUDE.md**：这是你的指令文件，不是你的编辑对象
+11. **不得修改 validate.sh**：如需改校验逻辑，记录到 progress.txt 让人类处理
+12. **不得修改 requirements.md**：这是用户的需求输入，你只能读取和遵循，绝对不能修改、删除或重写
+13. **project_profile.json 基于事实**：所有字段必须来自实际文件扫描，禁止猜测或编造
+
+---
+
 ## 项目上下文
 
 读取 `claude-auto-loop/project_profile.json` 获取项目信息。
 该文件包含项目名称、技术栈、服务启动命令、健康检查 URL 等。
 
-**如果该文件不存在，你必须先执行下方的「项目扫描协议」。**
+**如果该文件不存在，说明需要执行项目扫描（扫描协议由 harness 在首次运行时通过 SCAN_PROTOCOL.md 注入）。**
 
 ## 关键文件
 
@@ -48,135 +71,54 @@
 
 **核心原则：不停工、不擅改、留记录。** 用户会在 `PAUSE_EVERY` 暂停时看到你的记录，然后决定是否修改 `requirements.md`。
 
----
-
-## 项目扫描协议（首次运行时执行）
-
-当 `project_profile.json` 不存在时，按以下步骤扫描项目并生成配置文件。
-
-### 步骤 1：判断项目类型
-
-检查项目根目录：
-- 如果存在代码文件（`.py`, `.js`, `.ts`, `package.json`, `requirements.txt` 等）→ **旧项目**（已有代码）
-- 如果根目录几乎为空（仅有 `claude-auto-loop/` 和少量文件）→ **新项目**（从零开始）
-
-### 步骤 2A：旧项目 — 扫描现有代码，**优先整理文档**
-
-**文档先行**：旧项目在扫描前，必须先确保项目文档可读、可用。若 `README.md` 缺失或过于简略、`docs/` 不完整，**先补充/整理文档**（README 至少含项目简介、技术栈、目录结构、关键模块说明），再继续扫描。文档是后续任务高质量执行的基础。
-
-按顺序检查以下文件，**存在则读取**，不存在则跳过：
-
-1. `package.json` → Node.js 项目，读取 dependencies 判断框架（React/Vue/Express 等）
-2. `pyproject.toml` / `requirements.txt` / `setup.py` / `setup.cfg` → Python 项目，判断框架（FastAPI/Django/Flask 等）
-3. `Cargo.toml` → Rust，`go.mod` → Go，`pom.xml` / `build.gradle` → Java
-4. `docker-compose.yml` / `Dockerfile` → 容器化配置，提取服务定义
-5. `Makefile` → 构建方式
-6. `README.md` / `docs/` → 现有文档（若缺失或过简，**先整理再扫描**；在 progress.txt 中记录文档状态）
-7. `.env` / `.env.example` → 环境变量配置
-8. 运行 `ls` 查看顶层目录结构
-
-根据扫描结果，生成 `project_profile.json`（格式见下方）和 `init.sh`（规则见下方）。`existing_docs` 须如实列出项目中**所有**可读文档路径。
-
-### 步骤 2B：新项目 — 脚手架搭建
-
-1. **优先检查项目根目录是否存在 `requirements.md`**，如果存在，以其中的技术约束和设计要求为准
-2. 根据需求（`requirements.md` 或 harness 传入的需求文本），设计技术架构
-3. 创建项目目录结构和基础文件（入口文件、配置文件、依赖文件等）
-4. 生成 `README.md`，说明项目用途和技术栈
-5. 初始化包管理（`npm init` / `pip freeze` 等）
-6. 完成后，执行**步骤 2A 的扫描流程**生成 `project_profile.json` 和 `init.sh`
-
-### 步骤 3：生成 tasks.json
-
-根据用户需求（优先参考 `requirements.md`，其次参考 harness 传入的需求文本），将功能分解为具体任务（格式见下方 tasks.json 章节）。如果 `requirements.md` 中有明确的功能列表，按其内容拆分；如果只有模糊描述，自行合理拆分。
-
-### 步骤 4：收尾
-
-1. 创建 `progress.txt`，记录初始化摘要
-2. 写入 `session_result.json`
-3. `git add -A && git commit -m "init: 项目扫描 + 任务分解"`
-
----
-
-## project_profile.json 格式
+## tasks.json 格式参考
 
 ```json
 {
-  "name": "项目名称（从 package.json 或目录名自动检测）",
-  "detected_at": "2026-02-13T10:00:00",
-  "project_type": "existing | new",
-  "tech_stack": {
-    "languages": ["python", "typescript"],
-    "backend": {
-      "framework": "fastapi | django | express | none",
-      "runtime": "uvicorn | gunicorn | node | none",
-      "entry": "main:app | app.py | index.js"
-    },
-    "frontend": {
-      "framework": "react | vue | none",
-      "bundler": "vite | webpack | none",
-      "dir": "web | frontend | client | ."
-    },
-    "database": "mongodb | postgresql | sqlite | none",
-    "package_managers": ["pip", "npm", "cargo"]
-  },
-  "services": [
+  "project": "项目名称",
+  "created_at": "2026-02-13",
+  "features": [
     {
-      "name": "backend",
-      "command": "启动命令",
-      "port": 8000,
-      "health_check": "http://localhost:8000/health",
-      "cwd": "."
-    },
-    {
-      "name": "frontend",
-      "command": "npm run dev",
-      "port": 5173,
-      "health_check": "http://localhost:5173",
-      "cwd": "web"
+      "id": "feat-001",
+      "category": "backend | frontend | fullstack | infra",
+      "priority": 1,
+      "description": "功能的简要描述",
+      "steps": [
+        "具体步骤 1",
+        "具体步骤 2",
+        "端到端测试：验证方法"
+      ],
+      "status": "pending",
+      "depends_on": []
     }
-  ],
-  "env_setup": {
-    "python_env": "conda:env_name | venv | system",
-    "node_version": "20 | 18 | none"
-  },
-  "existing_docs": ["README.md", "docs/api.md"],
-  "has_tests": false,
-  "has_docker": false,
-  "mcp_tools": {
-    "playwright": false
-  },
-  "scan_files_checked": [
-    "package.json", "pyproject.toml", "requirements.txt",
-    "Dockerfile", "docker-compose.yml", "Makefile", "README.md"
   ]
 }
 ```
 
-**注意**：
-- `existing_docs`：列出项目中所有可读文档路径，Agent 实现前按需读取与任务相关的文档；扫描时须如实填写全部文档
-- 字段值必须基于实际扫描结果，**禁止猜测**
-- 如果某个字段无法确定，使用 `"none"` 或空数组 `[]`
-- `services` 中的 `command` 必须来自实际的配置文件（package.json scripts、Procfile 等）或标准命令
-- `mcp_tools` 字段：检查 `claude-auto-loop/config.env` 中的 `MCP_PLAYWRIGHT` 等变量。如果 `config.env` 不存在，则全部设为 `false`
+## session_result.json 格式
 
----
+```json
+{
+  "session_result": "success | failed",
+  "task_id": "feat-xxx",
+  "status_before": "pending | failed",
+  "status_after": "done | failed | in_progress | testing",
+  "git_commit": "abc1234 或 null",
+  "tests_passed": true | false,
+  "notes": "本次会话的简要说明"
+}
+```
 
-## init.sh 生成规则
+## sync_state.json 格式（需求同步条件触发用）
 
-扫描完成后，基于 `project_profile.json` 生成 `init.sh`，遵循以下规则：
+当 Agent 执行需求同步时创建或更新此文件：
 
-1. **文件头部**：包含 `#!/bin/bash`、`set -e`、脚本说明
-2. **环境激活**：
-   - 如果 `env_setup.python_env` 以 `conda:` 开头 → 生成 conda activate 逻辑（需 source conda.sh）
-   - 如果 `env_setup.python_env` 是 `venv` → 生成 `source .venv/bin/activate`
-   - 如果 `env_setup.node_version` 不是 `none` → 生成 nvm use 逻辑
-3. **服务启动**：对 `services` 数组中的每个服务：
-   - 先用 `lsof -i :端口` 检查是否已运行
-   - 未运行则 `nohup 命令 > /tmp/日志文件 2>&1 &`
-   - 等待健康检查通过（最多 10 秒）
-4. **幂等设计**：已运行的服务必须跳过，不能重复启动
-5. **末尾输出**：打印所有服务的 URL
+```json
+{
+  "last_requirements_hash": "sha256 哈希值（与 requirements_hash.current 一致）",
+  "last_synced_at": "2026-02-25T12:00:00"
+}
+```
 
 ---
 
@@ -244,7 +186,8 @@ pending ──→ in_progress ──→ testing ──→ done
 3. **一次只选一个任务**
 4. 将选中任务的 `status` 改为 `in_progress`
 
-### 4. 增量实现
+### 第四步：增量实现
+
 1. 只实现当前选中的功能
 2. 按照 `tasks.json` 中该任务的 `steps` 逐步完成
 3. 写出清晰、可维护的代码
@@ -274,6 +217,13 @@ pending ──→ in_progress ──→ testing ──→ done
 **纯逻辑功能**：
 - 如果项目已有测试框架（检查 `project_profile.json` 中 `has_tests` 为 `true`）→ 运行 `pytest` / `npm test` 等
 - 如果没有测试框架 → 通过调用入口函数或脚本验证输出
+
+**测试效率（避免无效循环）**：
+- **先验证数据再验证 UI**：如果组件依赖数据（如推荐列表），先确认数据源是否有输出，再检查页面渲染
+- **curl 测试最多 3 次**：同一 URL 的 curl 检查不超过 3 次。如果 3 次都找不到预期内容，换一个有数据的测试用例
+- **禁止创建独立测试文件**：不要创建 `test-*.js` 或 `test-*.html`。使用项目已有的测试框架或直接 curl / Playwright 验证
+- **禁止为了测试重启服务器**：除非构建报错，否则不要 pkill / restart 开发服务器
+- **优先使用 Playwright MCP**：如果可用，用 `browser_navigate` + `browser_snapshot` 一次性验证，避免多轮 curl 试错
 
 4. 如果测试通过：将 `status` 改为 `done`
 5. 如果测试失败：将 `status` 改为 `failed`，在 notes 中记录失败原因
@@ -308,72 +258,3 @@ pending ──→ in_progress ──→ testing ──→ done
    }
    ```
 5. **确保代码处于可工作状态**（下一个会话可以直接开始新功能）
-
----
-
-## 铁律（不可违反）
-
-1. **一次只做一个功能**：不要试图一口气完成所有任务
-2. **不得删除或修改 tasks.json 中已有任务的描述**：只能修改 `status` 字段；允许根据 requirements.md 新增任务
-3. **不得跳过状态**：必须按照状态机的合法迁移路径更新
-4. **不得过早标记 done**：只有通过端到端测试才能标记
-5. **每次结束前必须 git commit**：确保代码不丢失
-6. **每次结束前必须更新 progress.txt**：确保下个会话能快速恢复上下文
-7. **每次结束前必须写 session_result.json**：这是 harness 判断你工作成果的唯一依据
-8. **发现 Bug 优先修复**：先确保现有功能正常，再开发新功能
-9. **按需维护文档**：仅当功能对外行为发生变化时才更新 README 或 docs；内部重构、Bug 修复不强制更新
-10. **不得修改 CLAUDE.md**：这是你的指令文件，不是你的编辑对象
-11. **不得修改 validate.sh**：如需改校验逻辑，记录到 progress.txt 让人类处理
-12. **不得修改 requirements.md**：这是用户的需求输入，你只能读取和遵循，绝对不能修改、删除或重写
-13. **project_profile.json 基于事实**：所有字段必须来自实际文件扫描，禁止猜测或编造
-
----
-
-## tasks.json 格式参考
-
-```json
-{
-  "project": "项目名称",
-  "created_at": "2026-02-13",
-  "features": [
-    {
-      "id": "feat-001",
-      "category": "backend | frontend | fullstack | infra",
-      "priority": 1,
-      "description": "功能的简要描述",
-      "steps": [
-        "具体步骤 1",
-        "具体步骤 2",
-        "端到端测试：验证方法"
-      ],
-      "status": "pending",
-      "depends_on": []
-    }
-  ]
-}
-```
-
-## session_result.json 格式
-
-```json
-{
-  "session_result": "success | failed",
-  "task_id": "feat-xxx",
-  "status_before": "pending | failed",
-  "status_after": "done | failed | in_progress | testing",
-  "git_commit": "abc1234 或 null",
-  "tests_passed": true | false,
-  "notes": "本次会话的简要说明"
-}
-```
-
-## sync_state.json 格式（需求同步条件触发用）
-
-当 Agent 执行需求同步时创建或更新此文件：
-
-```json
-{
-  "last_requirements_hash": "sha256 哈希值（与 requirements_hash.current 一致）",
-  "last_synced_at": "2026-02-25T12:00:00"
-}
-```

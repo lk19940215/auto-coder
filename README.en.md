@@ -10,17 +10,24 @@ Based on [Anthropic: Effective harnesses for long-running agents](https://www.an
 
 ---
 
-## Quick Start (30 seconds)
+## Installation
 
 **Prerequisites**: [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`npm install -g @anthropic-ai/claude-code`) + Python 3 + Git
 
 ```bash
-# 1. Clone this repo into your project directory
 cd /path/to/your/project
 git clone --depth 1 https://github.com/lk19940215/claude-auto-loop.git
 rm -rf claude-auto-loop/.git    # Remove the tool's own git history to avoid nested repos
+```
 
-# 2. Launch (pick one)
+---
+
+## Usage
+
+### Basic Usage
+
+```bash
+# First run (must provide a requirement, pick one)
 
 # Quick mode: one-liner requirement
 bash claude-auto-loop/run.sh "Implement user login with email and OAuth support"
@@ -30,38 +37,168 @@ cp claude-auto-loop/requirements.example.md requirements.md
 vim requirements.md                # Edit your requirements
 bash claude-auto-loop/run.sh     # Automatically reads requirements.md
 
-# 3. Resume later (automatically picks up where it left off)
+# Resume later (automatically picks up where it left off)
 bash claude-auto-loop/run.sh
 ```
 
 > **Tip**: `requirements.md` takes priority over CLI arguments. You can edit it anytime — the next session will automatically pick up the latest content.
 
-### Script Call Order
+### Command-Line Arguments
 
-| Script | When | Description |
-|--------|------|-------------|
-| **check_prerequisites** | Auto on run.sh start | Checks claude CLI, python3, CLAUDE.md, validate.sh; prompts to run setup.sh if no config.env |
-| **setup.sh** | Manual (optional) | Configure model (Claude / GLM / DeepSeek) and MCP tools. **To switch provider or fix quota**: run again and choose `y` to reconfigure |
-| **init.sh** | Per session by Agent | Auto-generated on first scan; starts environment (install deps, start services) |
-| **validate.sh** | Auto after each session | Validates Agent output, git commit, health checks |
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `--view` | Interactive observation mode, shows Agent decisions in real-time | Off |
+| `--max N` | Maximum number of sessions before auto-stop | 50 |
+| `--pause N` | Pause every N sessions for user confirmation | 5 |
 
-That's it. Details below.
+```bash
+bash claude-auto-loop/run.sh                          # Default: 50 sessions, pause every 5
+bash claude-auto-loop/run.sh --max 3                  # Stop after 3 sessions
+bash claude-auto-loop/run.sh --max 10 --pause 3       # Run 10, pause every 3
+bash claude-auto-loop/run.sh --view                   # Observation mode
+bash claude-auto-loop/run.sh --view "requirement"     # Observation mode + project init
+```
+
+### Observation Mode (Debug / Watch Agent Behavior)
+
+`run.sh` defaults to `-p` (Print mode) for automated looping, which only outputs the final text. Add the `--view` flag to switch to Claude Code's interactive mode, **watching the Agent's tool calls, file edits, and decision-making in real-time**:
+
+```bash
+bash claude-auto-loop/run.sh --view           # Watch the next coding task
+bash claude-auto-loop/run.sh --view "requirement"  # Watch project initialization
+```
+
+`--view` automatically inherits the model configuration from `config.env` (DeepSeek / GLM / Claude), injects the CLAUDE.md protocol, and uses the same hooks and settings. The only difference is running in interactive mode — exit manually when done (`Ctrl+C` or `/exit`).
+
+**Mode comparison**:
+
+| | Automated Mode | Observation Mode (`--view`) |
+|---|---|---|
+| Command | `bash run.sh "requirement"` | `bash run.sh --view` |
+| Visibility | Final text only + progress indicator | Live tool calls, file diffs, thinking |
+| Exit | Auto-exit and loop | Manual exit (`Ctrl+C` or `/exit`) |
+| Validation | Auto-runs `validate.sh` | Run manually: `bash claude-auto-loop/validate.sh` |
+| Best for | Unattended, batch execution | Debugging prompts, observing behavior, verifying a single task |
 
 ---
 
-## What Happens After You Run It
+## Playwright MCP (Web Frontend Auto-Testing)
+
+### Why It Matters
+
+In the Agent's 6-step workflow, Step 5 (test & verify) is critical for web frontend projects. Without Playwright MCP, the Agent can only use `curl` to check HTTP status codes and text matching — it cannot verify page rendering, interaction behavior, or whether components display correctly.
+
+| | Without Playwright MCP | With Playwright MCP |
+|---|---|---|
+| Frontend testing | curl checks status codes (can only verify page exists) | Browser rendering + screenshots + click interactions |
+| Test quality | Low (cannot verify visual effects or interactions) | High (end-to-end verification) |
+| Tool calls | Multiple curl + grep trial-and-error | Precise snapshot + click |
+| Session efficiency | Testing phase consumes many turns | Testing phase passes quickly |
+
+### Dependencies
+
+Playwright MCP (`@playwright/mcp`) is an npm package maintained by Microsoft:
+- **Includes Chromium browser** (auto-downloads ~150MB on first run, no need to manually install Chrome)
+- **Does not depend on** Python playwright package
+- Requires Node.js 18+
+
+### Installation
+
+**Option 1: Via setup.sh (recommended)**
+
+```bash
+bash claude-auto-loop/setup.sh
+# After configuring the model, you'll be prompted to install Playwright MCP
+```
+
+**Option 2: Manual installation**
+
+```bash
+# Claude CLI
+claude mcp add playwright -- npx @playwright/mcp@latest
+
+# Cursor IDE: Settings → MCP → Add
+# name: playwright
+# command: npx @playwright/mcp@latest
+```
+
+### Verify Installation
+
+```bash
+claude mcp list                       # Should show playwright
+npx @playwright/mcp@latest --help     # Should show help info
+```
+
+After installation, Chromium will auto-download on the Agent's first browser tool call (requires internet).
+
+---
+
+## Automated Testing
+
+The Agent runs test verification in Step 5 of each session. Testing strategy is defined by the protocol in [CLAUDE.md](CLAUDE.md).
+
+### Testing Strategy Priority
+
+| Project Type | With Playwright MCP | Without Playwright MCP |
+|---|---|---|
+| Web Frontend | `browser_navigate` + `browser_snapshot` (recommended) | `curl` + `grep` (limited) |
+| API Backend | `curl` to verify status codes and responses | `curl` to verify status codes and responses |
+| Pure Logic | Run `pytest` / `npm test` | Call entry functions to verify |
+
+### Testing Efficiency Rules
+
+CLAUDE.md defines rules to prevent the Agent from wasting API calls during testing:
+
+- **Verify data before UI**: When a component depends on data (e.g., recommendation list), confirm the data source has output first
+- **Max 3 curl tests per URL**: If expected content isn't found in 3 attempts, switch test cases
+- **No standalone test files**: Don't create `test-*.js` / `test-*.html`
+- **No server restarts for testing**: Unless there's a build error
+- **Prefer Playwright MCP**: One `browser_snapshot` beats multiple rounds of `curl`
+
+### Harness External Validation
+
+Agent testing is only the first layer. After each session, `run.sh` automatically runs `validate.sh` for external validation:
+
+- Is `session_result.json` valid?
+- Are there new git commits?
+- Service health checks
+- Custom hooks in `validate.d/`
+
+### Custom Test Hooks
+
+Place `.sh` scripts in the `validate.d/` directory. `validate.sh` will automatically execute them:
+
+```bash
+mkdir -p claude-auto-loop/validate.d
+
+# Example: add a lint check
+cat > claude-auto-loop/validate.d/lint.sh << 'EOF'
+#!/bin/bash
+cd "$(dirname "$0")/../.."
+npm run lint 2>&1 || exit 2  # exit 2 = warning, exit 1 = fatal
+EOF
+```
+
+Hook exit code convention: `0` = pass, `1` = fatal failure (triggers git rollback), `2+` = warning (non-blocking).
+
+---
+
+## How It Works
+
+### What Happens After You Run It
 
 ```
 bash claude-auto-loop/run.sh "your requirement"
         |
         v
-  ┌─────────────────────────────────────────────┐
-  │ 1. Project Scan (auto on first run)          │
-  │    Agent scans project files → generates:    │
-  │    - project_profile.json (project metadata) │
-  │    - init.sh (environment init script)       │
-  │    - tasks.json (task list + status)         │
-  └─────────────────────────────────────────────┘
+  ┌───────────────────────────────────────────────────┐
+  │ 1. Project Scan (auto on first run)               │
+  │    Injects: CLAUDE.md + SCAN_PROTOCOL.md (concat) │
+  │    Agent scans project files → generates:          │
+  │    - project_profile.json (project metadata)       │
+  │    - init.sh (environment init script)             │
+  │    - tasks.json (task list + status)               │
+  └───────────────────────────────────────────────────┘
         |
         v
   ┌─────────────────────────────────────────────┐
@@ -94,35 +231,14 @@ bash claude-auto-loop/run.sh "your requirement"
   Ctrl+C mid-way → resume on next run
 ```
 
-### Check Progress
+### Script Call Order
 
-```bash
-cat claude-auto-loop/progress.txt          # Work log for each session
-cat claude-auto-loop/tasks.json            # Task list and statuses
-cat claude-auto-loop/project_profile.json  # Auto-detected project metadata
-```
-
-### Requirements Changes and User Intervention
-
-**When requirements evolve:**
-
-- After editing `requirements.md`, the next `bash claude-auto-loop/run.sh` run will have the Agent read the latest content.
-- During context restoration, the Agent **conditionally** syncs requirements: only when `requirements.md` has changed will it compare with `tasks.json`. If it finds new requirements not yet covered, it will break them down into new tasks, append them to `tasks.json`, then proceed as usual.
-- The protocol permits the Agent to add new tasks (it only forbids deleting or modifying existing task descriptions), so requirement changes are reflected in the task list automatically.
-
-**When you personally spot something to improve, you have three options:**
-
-| Option | Action | When to use |
-|--------|--------|-------------|
-| Update requirements | Add new requirements or improvements to `requirements.md`, then run `bash claude-auto-loop/run.sh` | Let the Agent decompose and implement; **recommended** |
-| Add task manually | Add a new entry to `features` in `tasks.json` with `status: "pending"`, then run `run.sh` | Requirements are clear and you want precise control over the task description |
-| Edit code directly | Make changes in Cursor, `git commit`, then run `run.sh` | Small fixes you can do faster yourself |
-
-In any case, continue with `bash claude-auto-loop/run.sh` as usual.
-
----
-
-## How It Works
+| Script | When | Description |
+|--------|------|-------------|
+| **check_prerequisites** | Auto on run.sh start | Checks claude CLI, python3, CLAUDE.md, SCAN_PROTOCOL.md, validate.sh; prompts to run setup.sh if no config.env |
+| **setup.sh** | Manual (optional) | Configure model (Claude / GLM / DeepSeek) and MCP tools. **To switch provider or fix quota**: run again and choose `y` to reconfigure |
+| **init.sh** | Per session by Agent | Auto-generated on first scan; starts environment (install deps, start services) |
+| **validate.sh** | Auto after each session | Validates Agent output, git commit, health checks |
 
 ### Core Loop: Who Does What
 
@@ -134,29 +250,41 @@ The system has two layers, each with a clear responsibility:
 ```
 run.sh core logic (pseudocode):
 
-while session < 50:                          # Safety cap, prevents infinite loops
+while session < MAX_SESSIONS:              # Default 50, adjustable via --max
     if all tasks done:
-        exit                                 # All done, exit
+        exit                               # All done, exit
 
-    record git HEAD                          # Remember pre-session code state
+    record git HEAD                        # Remember pre-session code state
 
-    claude -p "follow CLAUDE.md"             # ← -p = Print mode: exits after run, scriptable; Agent picks task, implements, tests, commits
+    claude -p "concise prompt"              # ← -p = Print mode
+        --append-system-prompt-file CLAUDE.md #    Coding sessions inject CLAUDE.md only (scan sessions concat SCAN_PROTOCOL.md)
+        --allowedTools "Read,Edit,Write,..."  #    Tool whitelist to prevent misuse
+        --verbose                             #    Real-time tool call details
+        2>&1 | tee session.log                #    Foreground pipeline: live terminal output + log file
 
-    bash validate.sh                         # ← Harness externally validates Agent's output
+    bash validate.sh                        # ← Harness externally validates Agent's output
 
     if validation passed:
-        continue                             # Next session
+        continue                            # Next session
     else:
-        git reset --hard HEAD_BEFORE         # Roll back to pre-session state
+        git reset --hard HEAD_BEFORE        # Roll back to pre-session state
         consecutive_failures++
         if consecutive_failures >= 3:
             force-mark current task as failed # Skip this task, prevent dead loops
             consecutive_failures = 0
 
-    every 5 sessions, pause and ask user to confirm
+    every PAUSE_EVERY sessions, pause       # Default 5, adjustable via --pause
 ```
 
 **Why doesn't the harness pick tasks?** Because the Agent has full project context (code, dependencies, previous progress) — it's better at making decisions than a shell script. The harness only does what the Agent can't: external validation and forced rollback.
+
+### Check Progress
+
+```bash
+cat claude-auto-loop/progress.txt          # Work log for each session
+cat claude-auto-loop/tasks.json            # Task list and statuses
+cat claude-auto-loop/project_profile.json  # Auto-detected project metadata
+```
 
 ### Task Selection Logic
 
@@ -244,14 +372,77 @@ Safeguards to prevent the Agent from running indefinitely or going out of contro
 
 | Mechanism | Description |
 |---|---|
-| Max sessions | Defaults to 50 sessions, then auto-stops with instructions on how to continue |
+| Max sessions | Defaults to 50 sessions then auto-stops (`--max` to adjust); shows how to continue |
 | Per-task max retry | After 3 consecutive failures on the same task, force-marks it as `failed` and moves on |
-| Periodic human check | Pauses every 5 sessions, waits for user confirmation to continue |
+| Periodic human check | Pauses every 5 sessions (`--pause` to adjust), waits for user confirmation to continue |
 | Ctrl+C safe exit | Gracefully exits on interrupt signal, shows how to resume with `bash claude-auto-loop/run.sh` |
 | Init retry | Project scan phase retries up to 3 times to handle transient errors |
 | Git rollback | Auto `git reset --hard` on every validation failure — code never stays in a broken state |
 
 **Checkpoint recovery**: Whether interrupted by Ctrl+C, unexpected terminal closure, or session limit reached — just re-run `bash claude-auto-loop/run.sh` to resume from where it left off. All progress is persisted in `tasks.json` and `progress.txt`.
+
+### Observability During Run
+
+run.sh provides two layers of observability:
+
+**Real-time output (`--verbose` + `| tee`)**: Coding sessions enable `--verbose` by default, so Claude Code prints tool call names and results in the terminal. All output is also piped through `| tee` to a log file for later review.
+
+**Progress indicator (PreToolUse hook)**: Prints a progress status every 15 seconds. Via Claude Code's **PreToolUse** hook (`hooks/phase-signal.py`): when the model first calls a tool, the message switches from "Thinking..." to "Coding...".
+
+**6-step workflow display**: After the Agent enters the coding phase, the indicator shows the inferred step from [CLAUDE.md](CLAUDE.md), e.g. `Coding · Step 4: Implementation`, `Coding · Step 5: Testing`. Steps are inferred from tool call patterns (e.g. Read profile/progress/tasks → Step 1, Bash init.sh → Step 2); slight inaccuracies are possible.
+
+### Common Issues
+
+**Quota exhausted / 429 error?**  
+Run `bash claude-auto-loop/setup.sh` to switch provider. Options: **DeepSeek** (granted balance for new users, [create API Key](https://platform.deepseek.com/api_keys)); OpenRouter (50 req/day unpaid, [openrouter.ai](https://openrouter.ai)); Anthropic Console ($5 one-time, [console.anthropic.com](https://console.anthropic.com)).
+
+**No output for a long time after model call?**  
+run.sh uses `2>&1 | tee` for real-time terminal output, and coding sessions enable `--verbose` to show detailed tool call info. First API response often takes 1–2 minutes (longer for some endpoints). If still no output, add `CLAUDE_DEBUG=api` in config.env.
+
+**How does "Thinking..." switch to "Coding..."?**  
+See "Progress Indicator During Run" above: PreToolUse hook writes `.phase` on first tool call.
+
+**Model says "needs permission to create file" but project_profile.json/tasks.json not generated?**  
+run.sh adds `--permission-mode bypassPermissions`. If it still fails, try `--dangerously-skip-permissions` (trusted environments only).
+
+**Ctrl+C doesn't exit?**  
+claude runs as a foreground pipeline; Ctrl+C directly terminates claude and tee. The trap handler cleans up the background progress indicator and exits gracefully. Try Ctrl+C twice, or `kill -9 <run.sh PID>`.
+
+**How to get more logs (e.g. playwright-mcp Click)?**  
+Coding sessions already enable `--verbose` by default, showing tool call names and results per turn. For deeper debugging, add to config.env (no need to re-run setup):
+```
+CLAUDE_DEBUG=mcp        # MCP calls (incl. Playwright)
+CLAUDE_DEBUG=api,mcp    # API + MCP
+```
+
+**DeepSeek usage still shows deepseek-reasoner calls?**  
+This tool follows DeepSeek's official Claude Code integration and should avoid reasoner mixing. If you still see reasoner:  
+1. Check `~/.claude/settings.json` or project `.claude/settings.json` for `model` overrides (e.g. `opus`, `opusplan`);  
+2. Confirm config.env has `ANTHROPIC_SMALL_FAST_MODEL=deepseek-chat`;  
+3. Re-run `bash claude-auto-loop/setup.sh` and select DeepSeek to regenerate full config.
+
+**Can I interact with Claude in CLI mode?**  
+run.sh uses `-p` (headless) so the Agent works autonomously. For interactive observation, use `--view` mode; for conversational collaboration, use **Cursor IDE mode** (see section below).
+
+---
+
+## Requirements Changes and User Intervention
+
+**When requirements evolve:**
+
+- After editing `requirements.md`, the next `bash claude-auto-loop/run.sh` run will have the Agent read the latest content.
+- During context restoration, the Agent **conditionally** syncs requirements: only when `requirements.md` has changed will it compare with `tasks.json`. If it finds new requirements not yet covered, it will break them down into new tasks, append them to `tasks.json`, then proceed as usual.
+- The protocol permits the Agent to add new tasks (it only forbids deleting or modifying existing task descriptions), so requirement changes are reflected in the task list automatically.
+
+**When you personally spot something to improve, you have three options:**
+
+| Option | Action | When to use |
+|--------|--------|-------------|
+| Update requirements | Add new requirements or improvements to `requirements.md`, then run `bash claude-auto-loop/run.sh` | Let the Agent decompose and implement; **recommended** |
+| Add task manually | Add a new entry to `features` in `tasks.json` with `status: "pending"`, then run `run.sh` | Requirements are clear and you want precise control over the task description |
+| Edit code directly | Make changes in Cursor, `git commit`, then run `run.sh` | Small fixes you can do faster yourself |
+
+In any case, continue with `bash claude-auto-loop/run.sh` as usual.
 
 ---
 
@@ -321,63 +512,15 @@ Defaults to the official Claude API. For alternative models:
 
 | Mode | Use Case | Cost | Mechanism |
 |---|---|---|---|
-| **Chat Mode** (Recommended) | Daily coding, frequent tasks | ⭐ (Lowest) | Uses `deepseek-chat` (V3) everywhere. Uses `optimized` alias to force disable Thinking, ensuring 0 Reasoner costs. |
-| **Hybrid Mode** | Complex tasks, balanced | ⭐⭐ (Medium) | Brain (Opus) uses **R1**, Hands (Sonnet/Haiku) use **V3**. Balanced intelligence and cost. |
-| **Reasoner Mode** | Hard problems, logic heavy | ⭐⭐⭐ (Highest) | Uses `deepseek-reasoner` (R1) everywhere. Strongest reasoning, but every operation (including reading files) is billed as R1. |
+| **Chat Mode** (Recommended) | Daily coding, frequent tasks | Low | Uses `deepseek-chat` (V3) everywhere. Uses `optimized` alias to force disable Thinking, ensuring 0 Reasoner costs. |
+| **Hybrid Mode** | Complex tasks, balanced | Medium | Brain (Opus) uses **R1**, Hands (Sonnet/Haiku) use **V3**. Balanced intelligence and cost. |
+| **Reasoner Mode** | Hard problems, logic heavy | High | Uses `deepseek-reasoner` (R1) everywhere. Strongest reasoning, but every operation (including reading files) is billed as R1. |
 
 > **Note**: DeepSeek Reasoner costs 5-10x more than Chat. **Chat Mode** or **Hybrid Mode** is recommended.
-
-Agent executes one API call per "Think → Tool → Result" cycle. A full session typically involves dozens of calls; billed by token usage.
-
-When DeepSeek is selected, `config.env` includes `ANTHROPIC_SMALL_FAST_MODEL` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`. `run.sh` explicitly passes `--model` to ensure consistency.
-
-### MCP Tools (Browser Testing)
-
-For projects with a web frontend, consider installing [Playwright MCP](https://github.com/microsoft/playwright-mcp). The Agent will use it for end-to-end browser testing (click, snapshot, navigate, and 25+ other tools). Pure backend projects can skip this.
 
 Configuration is saved in `config.env` (auto-added to `.gitignore`), only affects this tool, doesn't change global settings. **To switch model provider**: run `bash claude-auto-loop/setup.sh` again, choose `y` to reconfigure.
 
 **config.env is editable** after generation — no need to re-run setup. For example: add `CLAUDE_DEBUG=mcp` for debug logs; change `ANTHROPIC_MODEL` to switch model version.
-
-### Progress Indicator During Run
-
-While run.sh invokes Claude Code, it prints a progress message every 15 seconds. Via Claude Code's **PreToolUse** hook (`hooks/phase-signal.py`): when the model first calls a tool (Bash, Edit, Read, etc.), the message switches from "Thinking..." to "Coding...".
-
-**6-step workflow display**: After the Agent enters the coding phase, the prompt shows the inferred step from [CLAUDE.md](claude-auto-loop/CLAUDE.md), e.g. `Coding · Step 4: Implementation`, `Coding · Step 5: Testing`. Steps are inferred from tool call patterns (e.g. Read profile/progress/tasks → Step 1, Bash init.sh → Step 2); slight inaccuracies are possible.
-
-### Common Issues
-
-**Quota exhausted / 429 error?**  
-Run `bash claude-auto-loop/setup.sh` to switch provider. Options: **DeepSeek** (granted balance for new users, [create API Key](https://platform.deepseek.com/api_keys)); OpenRouter (50 req/day unpaid, [openrouter.ai](https://openrouter.ai)); Anthropic Console ($5 one-time, [console.anthropic.com](https://console.anthropic.com)).
-
-**No output for a long time after model call?**  
-run.sh uses `script` to create a PTY for real-time output. First API response often takes 1–2 minutes (longer for some endpoints). If still no output, add `CLAUDE_DEBUG=api` in config.env.
-
-**How does "Thinking..." switch to "Coding..."?**  
-See "Progress Indicator During Run" above: PreToolUse hook writes `.phase` on first tool call.
-
-**Model says "needs permission to create file" but project_profile.json/tasks.json not generated?**  
-run.sh adds `--permission-mode bypassPermissions`. If it still fails, try `--dangerously-skip-permissions` (trusted environments only).
-
-**Ctrl+C doesn't exit?**  
-run.sh runs claude in background; trap handles SIGINT. Try Ctrl+C twice, or `kill -9 <run.sh PID>`.
-
-**How to get more logs (e.g. playwright-mcp Click)?**  
-Add to config.env (no need to re-run setup):
-```
-CLAUDE_DEBUG=verbose    # full per-turn output
-CLAUDE_DEBUG=mcp        # MCP calls (incl. Playwright)
-CLAUDE_DEBUG=api,mcp    # API + MCP
-```
-
-**DeepSeek usage still shows deepseek-reasoner calls?**  
-This tool follows DeepSeek's official Claude Code integration and should avoid reasoner mixing. If you still see reasoner:  
-1. Check `~/.claude/settings.json` or project `.claude/settings.json` for `model` overrides (e.g. `opus`, `opusplan`);  
-2. Confirm config.env has `ANTHROPIC_SMALL_FAST_MODEL=deepseek-chat`;  
-3. Re-run `bash claude-auto-loop/setup.sh` and select DeepSeek to regenerate full config.
-
-**Can I interact with Claude in CLI mode?**  
-run.sh uses `-p` (headless) so the Agent works autonomously. For interactive collaboration, use **Cursor IDE mode**: copy cursor.mdc to `.cursor/rules/` and run each conversation manually.
 
 ---
 
@@ -399,7 +542,10 @@ This tool builds on Anthropic's [long-running agent harness](https://www.anthrop
 | Model selection | Claude only | GLM 4.7/5, DeepSeek, and other Anthropic-compatible models |
 | Requirements input | CLI one-liner argument | `requirements.md` document (specify tech stack, styles, editable anytime) |
 | Progress indicator | None | PreToolUse hook switches "Thinking..." → "Coding..." on first tool call |
-| Debug output | None | `CLAUDE_DEBUG` in config.env for verbose/mcp logs, anytime |
+| Debug output | None | `--verbose` enabled by default + `CLAUDE_DEBUG` in config.env for mcp/api logs |
+| Agent protocol loading | Agent manually Reads CLAUDE.md (may skip) | `--append-system-prompt-file` guarantees 100% injection; coding sessions inject CLAUDE.md only, scan sessions concat SCAN_PROTOCOL.md; leverages API prefix caching to reduce token cost |
+| Tool constraints | Unrestricted | `--allowedTools` whitelist prevents tool misuse and hallucinated calls |
+| Failure retry | Blind retry | Injects previous validation failure reason, avoids repeating the same mistake |
 
 ---
 
@@ -411,8 +557,9 @@ This tool builds on Anthropic's [long-running agent harness](https://www.anthrop
 
 | File | Description |
 |---|---|
-| `CLAUDE.md` | Agent protocol: state machine, 6-step workflow, hard rules |
-| `run.sh` | CLI mode entry: outer loop + validation + rollback + retry |
+| `CLAUDE.md` | Agent protocol: hard rules + reference formats + state machine + 6-step workflow (attention-optimized: constraints at top, action instructions at bottom) |
+| `SCAN_PROTOCOL.md` | Scan-only protocol: project scan steps + `project_profile.json` format + `init.sh` generation rules (injected only during first scan) |
+| `run.sh` | CLI mode entry: outer loop + system prompt injection + tool whitelist + validation + rollback + retry |
 | `validate.sh` | Standalone validation script: auto-called by CLI / manually run for Cursor |
 | `setup.sh` | Interactive setup (model selection + MCP tool installation) |
 | `cursor.mdc` | Cursor rules file: copy to `.cursor/rules/` to use |
@@ -433,20 +580,3 @@ This tool builds on Anthropic's [long-running agent harness](https://www.anthrop
 | `progress.txt` | Cross-session memory log (append-only) |
 | `session_result.json` | Temporary file (deleted by harness after each session) |
 | `.phase` | Progress state (thinking/coding), written by PreToolUse hook, gitignored |
-
-### Custom Validation Hooks
-
-Place `.sh` scripts in the `validate.d/` directory. `validate.sh` will automatically execute them:
-
-```bash
-mkdir -p claude-auto-loop/validate.d
-
-# Example: add a lint check
-cat > claude-auto-loop/validate.d/lint.sh << 'EOF'
-#!/bin/bash
-cd "$(dirname "$0")/../.."
-npm run lint 2>&1 || exit 2  # exit 2 = warning, exit 1 = fatal
-EOF
-```
-
-Hook exit code convention: `0` = pass, `1` = fatal failure (triggers git rollback), `2+` = warning (non-blocking).
