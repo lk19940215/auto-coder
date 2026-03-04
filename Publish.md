@@ -32,7 +32,7 @@ npm pack --dry-run
 
 # 应包含：
 #   bin/cli.js
-#   src/*.js (8 个模块)
+#   src/*.js (10 个模块)
 #   templates/CLAUDE.md
 #   templates/SCAN_PROTOCOL.md
 #   templates/requirements.example.md
@@ -54,6 +54,8 @@ node -c src/scanner.js && \
 node -c src/session.js && \
 node -c src/runner.js && \
 node -c src/setup.js && \
+node -c src/prompts.js && \
+node -c src/init.js && \
 echo "All OK"
 ```
 
@@ -120,6 +122,8 @@ auto-coder/
     config.js           # 配置管理
     runner.js           # 主循环
     session.js          # SDK 交互
+    prompts.js          # 提示语构建
+    init.js             # 环境初始化
     scanner.js          # 初始化扫描
     validator.js        # 校验引擎
     tasks.js            # 任务管理
@@ -132,7 +136,6 @@ auto-coder/
   docs/
     ARCHITECTURE.md     # 架构文档
     README.en.md        # English README
-    PUBLISH.md          # 本文件
 ```
 
 ## peerDependency 说明
