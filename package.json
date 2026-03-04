@@ -1,7 +1,7 @@
 {
-  "name": "auto-coder",
+  "name": "agent-coder",
   "version": "1.0.0",
-  "description": "Auto Coder — Autonomous coding agent harness. Scan, plan, code, validate, git-commit in a loop. Works with Claude Code SDK.",
+  "description": "Agent Coder — Autonomous coding agent harness. Scan, plan, code, validate, git-commit in a loop. Works with Claude Code SDK.",
   "bin": {
     "auto-coder": "bin/cli.js"
   },
@@ -12,7 +12,7 @@
     "docs/"
   ],
   "keywords": [
-    "auto-coder",
+    "agent-coder",
     "claude",
     "claude-code",
     "ai",

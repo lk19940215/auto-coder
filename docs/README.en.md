@@ -14,8 +14,8 @@ Inspired by [Anthropic: Effective harnesses for long-running agents](https://www
 # Prerequisites: Install Claude Agent SDK
 npm install -g @anthropic-ai/claude-agent-sdk
 
-# Install Auto Coder
-npm install -g auto-coder
+# Install
+npm install -g agent-coder
 
 # Configure model
 auto-coder setup

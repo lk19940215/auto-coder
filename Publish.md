@@ -73,7 +73,7 @@ auto-coder setup         # 应进入交互式配置
 auto-coder status        # 应提示未初始化
 
 # 清理
-npm unlink -g auto-coder
+npm unlink -g agent-coder
 rm -rf /tmp/test-project
 ```
 
@@ -91,10 +91,10 @@ npm version patch && npm publish
 
 ```bash
 # 等待几分钟后
-npm info auto-coder
+npm info agent-coder
 
 # 全局安装测试
-npm install -g auto-coder
+npm install -g agent-coder
 auto-coder --version
 ```
 
@@ -114,7 +114,7 @@ auto-coder --version
 
 ```
 auto-coder/
-  package.json          # name: "auto-coder", bin: "auto-coder"
+  package.json          # name: "agent-coder", bin: "auto-coder"
   README.md             # npm 页面展示的主文档
   bin/
     cli.js              # CLI 入口（#!/usr/bin/env node）
@@ -148,7 +148,7 @@ auto-coder/
 用户安装流程：
 ```bash
 npm install -g @anthropic-ai/claude-agent-sdk  # 前置
-npm install -g auto-coder                 # 本包
+npm install -g agent-coder                # 本包
 ```
 
 ## 版本策略

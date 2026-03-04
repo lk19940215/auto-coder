@@ -14,8 +14,8 @@
 # 前置：安装 Claude Agent SDK
 npm install -g @anthropic-ai/claude-agent-sdk
 
-# 安装 Auto Coder
-npm install -g auto-coder
+# 安装
+npm install -g agent-coder
 
 # 配置模型
 auto-coder setup
