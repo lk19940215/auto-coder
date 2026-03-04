@@ -269,6 +269,7 @@ async function run(requirement, opts = {}) {
     const sessionResult = await runCodingSession(session, {
       projectRoot,
       consecutiveFailures,
+      maxSessions,
       lastValidateLog: consecutiveFailures > 0 ? '上次校验失败' : '',
     });
 

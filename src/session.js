@@ -66,7 +66,11 @@ function logMessage(message, logStream, indicator) {
   if (message.type === 'assistant' && message.message?.content) {
     for (const block of message.message.content) {
       if (block.type === 'text' && block.text) {
-        if (indicator) process.stderr.write('\r\x1b[K');
+        if (indicator) {
+          const statusLine = indicator.getStatusLine();
+          process.stderr.write('\r\x1b[K');
+          if (statusLine) process.stderr.write(statusLine + '\n');
+        }
         process.stdout.write(block.text);
         if (logStream) logStream.write(block.text);
       }

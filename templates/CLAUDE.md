@@ -241,7 +241,7 @@ pending ──→ in_progress ──→ testing ──→ done
 
 ### 第六步：收尾（每次会话必须执行）
 
-1. **停止本次启动的后台服务**：`lsof -ti :端口 | xargs kill`，避免下次 session 端口冲突
+1. **后台服务管理**：根据 prompt 提示决定——单次模式（`--max 1`）时停止所有后台服务（`lsof -ti :端口 | xargs kill`）；连续模式时保持服务运行，下个 session 继续使用
 2. **按需更新文档和 profile**：
    - **README / 用户文档**：仅当对外行为变化（新增功能、API 变更、使用方式变化）时更新
    - **架构 / API 文档**：如果本次新增了模块、改变了模块职责或新增了 API 端点，更新 `existing_docs` 中对应的架构或 API 文档。同时更新 `project_profile.json` 的 `existing_docs` 列表（若新增了文档文件）

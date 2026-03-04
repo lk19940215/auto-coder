@@ -108,6 +108,7 @@ function buildCodingPrompt(sessionNum, opts = {}) {
         taskHint = `任务上下文: ${next.id} "${next.description}" (${next.status}), ` +
           `category=${next.category}, steps=${next.steps.length}步。` +
           `进度: ${stats.done}/${stats.total} done, ${stats.failed} failed。` +
+          `运行时目录: .claude-coder/（隐藏目录，ls -a 可见，所有 tasks.json/profile 等文件均在此目录下）。` +
           `第一步无需读取 tasks.json（已注入），直接确认任务后进入 Step 2。`;
       }
     }
@@ -126,6 +127,12 @@ function buildCodingPrompt(sessionNum, opts = {}) {
     } catch { /* ignore */ }
   }
 
+  // Hint 9: Service management (continuous vs single-shot mode)
+  const maxSessions = opts.maxSessions || 50;
+  const serviceHint = maxSessions === 1
+    ? '单次模式：收尾时停止所有后台服务。'
+    : '连续模式：收尾时不要停止后台服务，保持服务运行以便下个 session 继续使用。';
+
   return [
     `Session ${sessionNum}。执行 6 步流程。`,
     '效率要求：先规划后编码，完成全部编码后再统一测试，禁止编码-测试反复跳转。后端任务用 curl 验证，不启动浏览器。',
@@ -136,6 +143,7 @@ function buildCodingPrompt(sessionNum, opts = {}) {
     envHint,
     taskHint,
     memoryHint,
+    serviceHint,
     `完成后写入 session_result.json。${retryContext}`,
   ].filter(Boolean).join('\n');
 }

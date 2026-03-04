@@ -50,9 +50,9 @@ Each session, the agent autonomously follows 6 steps: restore context → env ch
 |---------|-------------|
 | `claude-coder setup` | Interactive model configuration |
 | `claude-coder run [requirement]` | Auto-coding loop |
+| `claude-coder run --max 1` | Single session (replaces old view mode) |
 | `claude-coder run --dry-run` | Preview mode |
 | `claude-coder init` | Initialize project environment |
-| `claude-coder view [requirement]` | Observation mode (single session) |
 | `claude-coder add "instruction"` | Append tasks |
 | `claude-coder validate` | Manually validate last session |
 | `claude-coder status` | View progress and costs |

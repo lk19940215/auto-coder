@@ -58,24 +58,29 @@ class Indicator {
     try { fs.writeFileSync(paths().stepFile, this.step, 'utf8'); } catch { /* ignore */ }
   }
 
-  _render() {
+  getStatusLine() {
     const elapsed = Math.floor((Date.now() - this.startTime) / 1000);
     const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
     const ss = String(elapsed % 60).padStart(2, '0');
     const spinner = SPINNERS[this.spinnerIndex % SPINNERS.length];
-    this.spinnerIndex++;
 
     const phaseLabel = this.phase === 'thinking'
       ? `${COLOR.yellow}思考中${COLOR.reset}`
       : `${COLOR.green}编码中${COLOR.reset}`;
 
-    let line = `\r${spinner} [Session ${this.sessionNum}] ${phaseLabel} ${mm}:${ss}`;
+    let line = `${spinner} [Session ${this.sessionNum}] ${phaseLabel} ${mm}:${ss}`;
     if (this.step) line += ` | ${this.step}`;
+    return line;
+  }
+
+  _render() {
+    this.spinnerIndex++;
+    const line = this.getStatusLine();
 
     const maxWidth = process.stderr.columns || 80;
-    if (line.length > maxWidth + 20) line = line.slice(0, maxWidth + 20);
+    const truncated = line.length > maxWidth + 20 ? line.slice(0, maxWidth + 20) : line;
 
-    process.stderr.write(`\r\x1b[K${line}`);
+    process.stderr.write(`\r\x1b[K${truncated}`);
   }
 }
 
