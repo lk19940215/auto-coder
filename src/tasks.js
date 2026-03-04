@@ -13,16 +13,20 @@ const TRANSITIONS = {
   done:        [],
 };
 
-function normalizeJson(text) {
-  return text
-    .replace(/[\u201c\u201d]/g, '"')
-    .replace(/[\u2018\u2019]/g, "'");
+function safeJsonParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return JSON.parse(
+      text.replace(/[\u201c\u201d]/g, '"').replace(/[\u2018\u2019]/g, "'")
+    );
+  }
 }
 
 function loadTasks() {
   const p = paths();
   if (!fs.existsSync(p.tasksFile)) return null;
-  return JSON.parse(normalizeJson(fs.readFileSync(p.tasksFile, 'utf8')));
+  return safeJsonParse(fs.readFileSync(p.tasksFile, 'utf8'));
 }
 
 function saveTasks(data) {
