@@ -73,14 +73,20 @@ function writeSessionSeparator(logStream, sessionNum, label) {
   logStream.write(`\n${sep}\n[Session ${sessionNum}] ${label} ${new Date().toISOString()}\n${sep}\n`);
 }
 
+let _lastPrintedStatusKey = '';
+
 function logMessage(message, logStream, indicator) {
   if (message.type === 'assistant' && message.message?.content) {
     for (const block of message.message.content) {
       if (block.type === 'text' && block.text) {
         if (indicator) {
-          const statusLine = indicator.getStatusLine();
           process.stderr.write('\r\x1b[K');
-          if (statusLine) process.stderr.write(statusLine + '\n');
+          const contentKey = `${indicator.phase}|${indicator.step}|${indicator.toolTarget}`;
+          if (contentKey !== _lastPrintedStatusKey) {
+            _lastPrintedStatusKey = contentKey;
+            const statusLine = indicator.getStatusLine();
+            if (statusLine) process.stderr.write(statusLine + '\n');
+          }
         }
         process.stdout.write(block.text);
         if (logStream) logStream.write(block.text);

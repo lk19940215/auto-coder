@@ -16,6 +16,8 @@ class Indicator {
     this.lastToolTime = Date.now();
     this.sessionNum = 0;
     this.startTime = Date.now();
+    this._lastContentKey = '';
+    this._lastRenderTime = 0;
   }
 
   start(sessionNum) {
@@ -86,8 +88,16 @@ class Indicator {
 
   _render() {
     this.spinnerIndex++;
-    const line = this.getStatusLine();
+    const contentKey = `${this.phase}|${this.step}|${this.toolTarget}`;
+    const now = Date.now();
 
+    if (contentKey === this._lastContentKey && now - this._lastRenderTime < 5000) {
+      return;
+    }
+    this._lastContentKey = contentKey;
+    this._lastRenderTime = now;
+
+    const line = this.getStatusLine();
     const maxWidth = process.stderr.columns || 80;
     const truncated = line.length > maxWidth + 20 ? line.slice(0, maxWidth + 20) : line;
 
@@ -95,41 +105,60 @@ class Indicator {
   }
 }
 
-// Phase-signal logic: infer phase/step from tool calls
+function extractFileTarget(toolInput) {
+  const raw = typeof toolInput === 'object'
+    ? (toolInput.file_path || toolInput.path || '')
+    : '';
+  if (!raw) return '';
+  return raw.split('/').slice(-2).join('/').slice(0, 40);
+}
+
+function extractBashLabel(cmd) {
+  if (cmd.includes('git ')) return 'Git 操作';
+  if (cmd.includes('npm ') || cmd.includes('pip ') || cmd.includes('pnpm ') || cmd.includes('yarn ')) return '安装依赖';
+  if (cmd.includes('curl') || cmd.includes('pytest') || cmd.includes('jest') || /\btest\b/.test(cmd)) return '测试验证';
+  if (cmd.includes('python ') || cmd.includes('node ')) return '执行脚本';
+  return '执行命令';
+}
+
+function extractBashTarget(cmd) {
+  let clean = cmd.replace(/^(?:cd\s+\S+\s*&&\s*)+/g, '').trim();
+  clean = clean.split(/\s*(?:\|{1,2}|;|&&|2>&1|>\s*\/dev\/null)\s*/)[0].trim();
+  return clean.slice(0, 40);
+}
+
 function inferPhaseStep(indicator, toolName, toolInput) {
   const name = (toolName || '').toLowerCase();
 
   indicator.lastToolTime = Date.now();
 
-  const rawTarget = typeof toolInput === 'object'
-    ? (toolInput.file_path || toolInput.path || toolInput.command || toolInput.pattern || '')
-    : String(toolInput || '');
-  const shortTarget = rawTarget.split('/').slice(-2).join('/').slice(0, 40);
-  indicator.toolTarget = shortTarget;
-
   if (name === 'write' || name === 'edit' || name === 'multiedit' || name === 'str_replace_editor' || name === 'strreplace') {
     indicator.updatePhase('coding');
+    indicator.updateStep('编辑文件');
+    indicator.toolTarget = extractFileTarget(toolInput);
   } else if (name === 'bash' || name === 'shell') {
     const cmd = typeof toolInput === 'object' ? (toolInput.command || '') : String(toolInput || '');
-    if (cmd.includes('git ')) {
-      indicator.updateStep('Git 操作');
-    } else if (cmd.includes('npm ') || cmd.includes('pip ') || cmd.includes('pnpm ')) {
-      indicator.updateStep('安装依赖');
-    } else if (cmd.includes('test') || cmd.includes('curl') || cmd.includes('pytest')) {
-      indicator.updateStep('测试验证');
-      indicator.updatePhase('coding');
-    } else {
+    const label = extractBashLabel(cmd);
+    indicator.updateStep(label);
+    indicator.toolTarget = extractBashTarget(cmd);
+    if (label === '测试验证' || label === '执行脚本' || label === '执行命令') {
       indicator.updatePhase('coding');
     }
   } else if (name === 'read' || name === 'glob' || name === 'grep' || name === 'ls') {
     indicator.updatePhase('thinking');
     indicator.updateStep('读取文件');
+    indicator.toolTarget = extractFileTarget(toolInput);
   } else if (name === 'task') {
     indicator.updatePhase('thinking');
     indicator.updateStep('子 Agent 搜索');
+    indicator.toolTarget = '';
   } else if (name === 'websearch' || name === 'webfetch') {
     indicator.updatePhase('thinking');
     indicator.updateStep('查阅文档');
+    indicator.toolTarget = '';
+  } else {
+    indicator.updateStep('工具调用');
+    indicator.toolTarget = '';
   }
 
   let summary;
@@ -137,15 +166,7 @@ function inferPhaseStep(indicator, toolName, toolInput) {
     const target = toolInput.file_path || toolInput.path || '';
     const cmd = toolInput.command || '';
     const pattern = toolInput.pattern || '';
-    if (target) {
-      summary = target;
-    } else if (cmd) {
-      summary = cmd.slice(0, 200);
-    } else if (pattern) {
-      summary = `pattern: ${pattern}`;
-    } else {
-      summary = JSON.stringify(toolInput).slice(0, 200);
-    }
+    summary = target || (cmd ? cmd.slice(0, 200) : '') || (pattern ? `pattern: ${pattern}` : JSON.stringify(toolInput).slice(0, 200));
   } else {
     summary = String(toolInput || '').slice(0, 200);
   }
