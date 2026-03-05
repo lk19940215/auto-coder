@@ -3,8 +3,11 @@
 const fs = require('fs');
 const path = require('path');
 const { paths, loadConfig, buildEnvVars, getAllowedTools, log } = require('./config');
-const { Indicator, inferPhaseStep } = require('./indicator');
-const { buildSystemPrompt, buildCodingPrompt, buildScanPrompt, buildAddPrompt } = require('./prompts');
+const { Indicator } = require('./indicator');
+const { createSessionHooks } = require('./hooks');
+const { buildSystemPrompt, buildCodingPrompt, buildScanPrompt, buildAddSystemPrompt, buildAddPrompt } = require('./prompts');
+
+// ── SDK loader (cached, shared across sessions) ──
 
 let _sdkModule = null;
 async function loadSDK() {
@@ -38,6 +41,8 @@ async function loadSDK() {
   process.exit(1);
 }
 
+// ── Helpers ──
+
 function applyEnvConfig(config) {
   Object.assign(process.env, buildEnvVars(config));
 }
@@ -63,8 +68,9 @@ function extractResult(messages) {
   return null;
 }
 
-function stripAnsi(str) {
-  return str.replace(/\x1b\[[0-9;]*m/g, '');
+function writeSessionSeparator(logStream, sessionNum, label) {
+  const sep = '='.repeat(60);
+  logStream.write(`\n${sep}\n[Session ${sessionNum}] ${label} ${new Date().toISOString()}\n${sep}\n`);
 }
 
 function logMessage(message, logStream, indicator) {
@@ -75,16 +81,28 @@ function logMessage(message, logStream, indicator) {
           const statusLine = indicator.getStatusLine();
           process.stderr.write('\r\x1b[K');
           if (statusLine) process.stderr.write(statusLine + '\n');
-          if (logStream && statusLine) {
-            logStream.write('\n' + stripAnsi(statusLine) + '\n');
-          }
         }
         process.stdout.write(block.text);
         if (logStream) logStream.write(block.text);
       }
+      if (block.type === 'tool_use' && logStream) {
+        logStream.write(`[TOOL_USE] ${block.name}: ${JSON.stringify(block.input).slice(0, 300)}\n`);
+      }
+    }
+  }
+
+  if (message.type === 'tool_result' && logStream) {
+    const isErr = message.is_error || false;
+    const content = typeof message.content === 'string'
+      ? message.content.slice(0, 500)
+      : JSON.stringify(message.content).slice(0, 500);
+    if (isErr) {
+      logStream.write(`[TOOL_ERROR] ${content}\n`);
     }
   }
 }
+
+// ── Session runners ──
 
 async function runCodingSession(sessionNum, opts = {}) {
   const sdk = await loadSDK();
@@ -101,58 +119,27 @@ async function runCodingSession(sessionNum, opts = {}) {
   const logFile = path.join(p.logsDir, `${taskId}_session_${sessionNum}_${dateStr}.log`);
   const logStream = fs.createWriteStream(logFile, { flags: 'a' });
 
-  indicator.start(sessionNum);
+  writeSessionSeparator(logStream, sessionNum, `coding task=${taskId}`);
 
-  const editCounts = {};
-  const EDIT_THRESHOLD = 5;
   const stallTimeoutMs = config.stallTimeout * 1000;
-  let stallDetected = false;
+  const { hooks, cleanup, isStalled } = createSessionHooks(indicator, logStream, {
+    enableStallDetection: true,
+    stallTimeoutMs,
+    enableEditGuard: true,
+  });
 
-  const stallChecker = setInterval(() => {
-    const idleMs = Date.now() - indicator.lastToolTime;
-    if (idleMs > stallTimeoutMs && !stallDetected) {
-      stallDetected = true;
-      log('warn', `无新工具调用超过 ${Math.floor(idleMs / 60000)} 分钟，自动中断 session`);
-    }
-  }, 30000);
+  indicator.start(sessionNum);
 
   try {
     const queryOpts = buildQueryOptions(config, opts);
     queryOpts.systemPrompt = systemPrompt;
-    queryOpts.hooks = {
-      PreToolUse: [{
-        matcher: '*',
-        hooks: [async (input) => {
-          inferPhaseStep(indicator, input.tool_name, input.tool_input);
-
-          const target = input.tool_input?.file_path || input.tool_input?.path || '';
-          const cmd = input.tool_input?.command || '';
-          const pattern = input.tool_input?.pattern || '';
-          const detail = target || cmd.slice(0, 200) || (pattern ? `pattern: ${pattern}` : '');
-          if (detail) {
-            logStream.write(`[${new Date().toISOString()}] ${input.tool_name}: ${detail}\n`);
-          }
-
-          if (['Write', 'Edit', 'MultiEdit'].includes(input.tool_name) && target) {
-            editCounts[target] = (editCounts[target] || 0) + 1;
-            if (editCounts[target] > EDIT_THRESHOLD) {
-              return {
-                decision: 'block',
-                message: `已对 ${target} 编辑 ${editCounts[target]} 次，疑似死循环。请重新审视方案后再继续。`,
-              };
-            }
-          }
-
-          return {};
-        }]
-      }]
-    };
+    queryOpts.hooks = hooks;
 
     const session = sdk.query({ prompt, options: queryOpts });
 
     const collected = [];
     for await (const message of session) {
-      if (stallDetected) {
+      if (isStalled()) {
         log('warn', '停顿超时，中断消息循环');
         break;
       }
@@ -160,20 +147,20 @@ async function runCodingSession(sessionNum, opts = {}) {
       logMessage(message, logStream, indicator);
     }
 
-    clearInterval(stallChecker);
+    cleanup();
     logStream.end();
     indicator.stop();
 
     const result = extractResult(collected);
     return {
-      exitCode: stallDetected ? 2 : 0,
+      exitCode: isStalled() ? 2 : 0,
       cost: result?.total_cost_usd ?? null,
       tokenUsage: result?.usage ?? null,
       logFile,
-      stalled: stallDetected,
+      stalled: isStalled(),
     };
   } catch (err) {
-    clearInterval(stallChecker);
+    cleanup();
     logStream.end();
     indicator.stop();
     log('error', `Claude SDK 错误: ${err.message}`);
@@ -201,40 +188,47 @@ async function runScanSession(requirement, opts = {}) {
   const logFile = path.join(p.logsDir, `scan_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.log`);
   const logStream = fs.createWriteStream(logFile, { flags: 'a' });
 
+  writeSessionSeparator(logStream, 0, `scan (${projectType})`);
+
+  const stallTimeoutMs = config.stallTimeout * 1000;
+  const { hooks, cleanup, isStalled } = createSessionHooks(indicator, logStream, {
+    enableStallDetection: true,
+    stallTimeoutMs,
+  });
+
   indicator.start(0);
   log('info', `正在调用 Claude Code 执行项目扫描（${projectType}项目）...`);
 
   try {
     const queryOpts = buildQueryOptions(config, opts);
     queryOpts.systemPrompt = systemPrompt;
-    queryOpts.hooks = {
-      PreToolUse: [{
-        matcher: '*',
-        hooks: [async (input) => {
-          inferPhaseStep(indicator, input.tool_name, input.tool_input);
-          return {};
-        }]
-      }]
-    };
+    queryOpts.hooks = hooks;
 
     const session = sdk.query({ prompt, options: queryOpts });
 
     const collected = [];
     for await (const message of session) {
+      if (isStalled()) {
+        log('warn', '扫描停顿超时，中断');
+        break;
+      }
       collected.push(message);
       logMessage(message, logStream, indicator);
     }
 
+    cleanup();
     logStream.end();
     indicator.stop();
 
     const result = extractResult(collected);
     return {
-      exitCode: 0,
+      exitCode: isStalled() ? 2 : 0,
       cost: result?.total_cost_usd ?? null,
       logFile,
+      stalled: isStalled(),
     };
   } catch (err) {
+    cleanup();
     logStream.end();
     indicator.stop();
     log('error', `扫描失败: ${err.message}`);
@@ -248,12 +242,20 @@ async function runAddSession(instruction, opts = {}) {
   applyEnvConfig(config);
   const indicator = new Indicator();
 
-  const systemPrompt = buildSystemPrompt(false);
+  const systemPrompt = buildAddSystemPrompt();
   const prompt = buildAddPrompt(instruction);
 
   const p = paths();
   const logFile = path.join(p.logsDir, `add_tasks_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.log`);
   const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+
+  writeSessionSeparator(logStream, 0, 'add tasks');
+
+  const stallTimeoutMs = config.stallTimeout * 1000;
+  const { hooks, cleanup, isStalled } = createSessionHooks(indicator, logStream, {
+    enableStallDetection: true,
+    stallTimeoutMs,
+  });
 
   indicator.start(0);
   log('info', '正在追加任务...');
@@ -261,26 +263,24 @@ async function runAddSession(instruction, opts = {}) {
   try {
     const queryOpts = buildQueryOptions(config, opts);
     queryOpts.systemPrompt = systemPrompt;
-    queryOpts.hooks = {
-      PreToolUse: [{
-        matcher: '*',
-        hooks: [async (input) => {
-          inferPhaseStep(indicator, input.tool_name, input.tool_input);
-          return {};
-        }]
-      }]
-    };
+    queryOpts.hooks = hooks;
 
     const session = sdk.query({ prompt, options: queryOpts });
 
     for await (const message of session) {
+      if (isStalled()) {
+        log('warn', '追加任务停顿超时，中断');
+        break;
+      }
       logMessage(message, logStream, indicator);
     }
 
+    cleanup();
     logStream.end();
     indicator.stop();
     log('ok', '任务追加完成');
   } catch (err) {
+    cleanup();
     logStream.end();
     indicator.stop();
     log('error', `任务追加失败: ${err.message}`);
@@ -304,6 +304,7 @@ function hasCodeFiles(projectRoot) {
 }
 
 module.exports = {
+  loadSDK,
   runCodingSession,
   runScanSession,
   runAddSession,

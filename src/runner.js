@@ -5,35 +5,15 @@ const path = require('path');
 const readline = require('readline');
 const { execSync } = require('child_process');
 const { paths, log, COLOR, loadConfig, ensureLoopDir, getProjectRoot } = require('./config');
-const { loadTasks, saveTasks, getFeatures, getStats, findNextTask } = require('./tasks');
+const { loadTasks, getFeatures, getStats, findNextTask, forceStatus } = require('./tasks');
 const { validate } = require('./validator');
 const { scan } = require('./scanner');
-const { runCodingSession, runAddSession } = require('./session');
+const { loadSDK, runCodingSession, runAddSession } = require('./session');
 
 const MAX_RETRY = 3;
 
-async function requireSdk() {
-  const pkgName = '@anthropic-ai/claude-agent-sdk';
-  const attempts = [
-    () => { require.resolve(pkgName); return true; },
-    () => {
-      const { createRequire } = require('module');
-      createRequire(__filename).resolve(pkgName);
-      return true;
-    },
-    () => {
-      const prefix = execSync('npm prefix -g', { encoding: 'utf8' }).trim();
-      const sdkPath = path.join(prefix, 'lib', 'node_modules', pkgName);
-      if (fs.existsSync(sdkPath)) return true;
-      throw new Error('not found');
-    },
-  ];
-  for (const attempt of attempts) {
-    try { if (attempt()) return; } catch { /* try next */ }
-  }
-  console.error(`错误：未找到 ${pkgName}`);
-  console.error(`请先安装：npm install -g ${pkgName}`);
-  process.exit(1);
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function getHead() {
@@ -77,17 +57,12 @@ function killServicesByProfile() {
   } catch { /* ignore profile read errors */ }
 }
 
-function sleepSync(ms) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) { /* busy wait */ }
-}
-
-function rollback(headBefore, reason) {
+async function rollback(headBefore, reason) {
   if (!headBefore || headBefore === 'none') return;
 
   killServicesByProfile();
 
-  if (process.platform === 'win32') sleepSync(1500);
+  if (process.platform === 'win32') await sleep(1500);
 
   const cwd = getProjectRoot();
   const gitEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
@@ -104,7 +79,7 @@ function rollback(headBefore, reason) {
     } catch (err) {
       if (attempt === 1) {
         log('warn', `回滚首次失败，等待后重试: ${err.message}`);
-        sleepSync(2000);
+        await sleep(2000);
       } else {
         log('error', `回滚失败: ${err.message}`);
       }
@@ -123,14 +98,10 @@ function rollback(headBefore, reason) {
 function markTaskFailed() {
   const data = loadTasks();
   if (!data) return;
-  const features = getFeatures(data);
-  for (const f of features) {
-    if (f.status === 'in_progress') {
-      f.status = 'failed';
-      break;
-    }
+  const result = forceStatus(data, 'failed');
+  if (result) {
+    log('warn', `已将任务 ${result.id} 强制标记为 failed`);
   }
-  saveTasks(data);
 }
 
 function tryPush() {
@@ -192,20 +163,17 @@ async function run(requirement, opts = {}) {
   console.log('============================================');
   console.log('');
 
-  // Load config
   const config = loadConfig();
   if (config.provider !== 'claude' && config.baseUrl) {
     log('ok', `模型配置已加载: ${config.provider}${config.model ? ` (${config.model})` : ''}`);
   }
 
-  // Read requirement from requirements.md or CLI
   const reqFile = path.join(projectRoot, 'requirements.md');
   if (fs.existsSync(reqFile) && !requirement) {
     requirement = fs.readFileSync(reqFile, 'utf8');
     log('ok', '已读取需求文件: requirements.md');
   }
 
-  // Ensure git repo
   try {
     execSync('git rev-parse --is-inside-work-tree', { cwd: projectRoot, stdio: 'ignore' });
   } catch {
@@ -217,7 +185,6 @@ async function run(requirement, opts = {}) {
     });
   }
 
-  // Initialization (scan) if needed
   if (!fs.existsSync(p.profile) || !fs.existsSync(p.tasksFile)) {
     if (!requirement) {
       log('error', '首次运行需要提供需求描述');
@@ -238,7 +205,7 @@ async function run(requirement, opts = {}) {
       return;
     }
 
-    await requireSdk();
+    await loadSDK();
     const scanResult = await scan(requirement, { projectRoot });
     if (!scanResult.success) {
       console.log('');
@@ -253,8 +220,7 @@ async function run(requirement, opts = {}) {
     printStats();
   }
 
-  // Coding loop
-  if (!dryRun) await requireSdk();
+  if (!dryRun) await loadSDK();
   log('info', `开始编码循环 (最多 ${maxSessions} 个会话) ...`);
   console.log('');
 
@@ -292,7 +258,6 @@ async function run(requirement, opts = {}) {
     const nextTask = findNextTask(taskData);
     const taskId = nextTask?.id || 'unknown';
 
-    // Run coding session
     const sessionResult = await runCodingSession(session, {
       projectRoot,
       taskId,
@@ -304,7 +269,7 @@ async function run(requirement, opts = {}) {
     if (sessionResult.stalled) {
       log('warn', `Session ${session} 因停顿超时中断，跳过校验直接重试`);
       consecutiveFailures++;
-      rollback(headBefore, '停顿超时');
+      await rollback(headBefore, '停顿超时');
       if (consecutiveFailures >= MAX_RETRY) {
         log('error', `连续失败 ${MAX_RETRY} 次，跳过当前任务`);
         markTaskFailed();
@@ -320,7 +285,6 @@ async function run(requirement, opts = {}) {
       continue;
     }
 
-    // Validate
     log('info', '开始 harness 校验 ...');
     const validateResult = await validate(headBefore);
 
@@ -338,7 +302,7 @@ async function run(requirement, opts = {}) {
         timestamp: new Date().toISOString(),
         result: 'success',
         cost: sessionResult.cost,
-        taskId: validateResult.sessionData?.task_id || null,
+        taskId: validateResult.sessionData?.task_id || taskId,
         statusAfter: validateResult.sessionData?.status_after || null,
         notes: validateResult.sessionData?.notes || null,
       });
@@ -347,7 +311,16 @@ async function run(requirement, opts = {}) {
       consecutiveFailures++;
       log('error', `Session ${session} 校验失败 (连续失败: ${consecutiveFailures}/${MAX_RETRY})`);
 
-      rollback(headBefore, '校验失败');
+      appendProgress({
+        session,
+        timestamp: new Date().toISOString(),
+        result: 'fatal',
+        cost: sessionResult.cost,
+        taskId,
+        reason: validateResult.sessionData?.reason || '校验失败',
+      });
+
+      await rollback(headBefore, '校验失败');
 
       if (consecutiveFailures >= MAX_RETRY) {
         log('error', `连续失败 ${MAX_RETRY} 次，跳过当前任务`);
@@ -357,7 +330,6 @@ async function run(requirement, opts = {}) {
       }
     }
 
-    // Periodic pause
     if (pauseEvery > 0 && session % pauseEvery === 0) {
       console.log('');
       printStats();
@@ -369,10 +341,8 @@ async function run(requirement, opts = {}) {
     }
   }
 
-  // Cleanup: stop services after loop ends
   killServicesByProfile();
 
-  // Final report
   console.log('');
   console.log('============================================');
   console.log('  运行结束');
@@ -382,7 +352,7 @@ async function run(requirement, opts = {}) {
 }
 
 async function add(instruction, opts = {}) {
-  await requireSdk();
+  await loadSDK();
   const p = paths();
   const projectRoot = getProjectRoot();
   ensureLoopDir();

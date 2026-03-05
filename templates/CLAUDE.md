@@ -177,8 +177,8 @@ pending ──→ in_progress ──→ testing ──→ done
 ### 第一步：恢复上下文
 
 1. **检查 prompt 注入的上下文**：
-   - 如果 prompt 中包含"任务上下文"（Hint 7），说明 harness 已注入当前任务信息，**跳过读取 tasks.json**，直接确认任务后进入第二步
-   - 如果 prompt 中包含"上次会话"（Hint 8），说明 harness 已注入上次会话摘要，**跳过读取 session_result.json 历史**
+   - 如果 prompt 中包含"任务上下文"（Hint 6），说明 harness 已注入当前任务信息，**跳过读取 tasks.json**，直接确认任务后进入第二步
+   - 如果 prompt 中包含"上次会话"（Hint 7），说明 harness 已注入上次会话摘要，**跳过读取 session_result.json 历史**
 2. 批量读取以下文件（一次工具调用，跳过已注入的）：`.claude-coder/project_profile.json`、`.claude-coder/tasks.json`（仅当无 Hint 6 时）
 3. 如果无 Hint 7 且 `session_result.json` 不存在，运行 `git log --oneline -20` 补充上下文
 4. 如果项目根目录存在 `requirements.md`，读取用户的详细需求和偏好（技术约束、样式要求等），作为本次会话的参考依据

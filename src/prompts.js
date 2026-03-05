@@ -210,6 +210,15 @@ function buildScanPrompt(projectType, requirement) {
 }
 
 /**
+ * Build lightweight system prompt for add sessions.
+ * Add sessions only decompose requirements — no coding workflow needed.
+ * CLAUDE.md is NOT injected to avoid role conflict and save ~2000 tokens.
+ */
+function buildAddSystemPrompt() {
+  return '你是一个任务分解专家，擅长将模糊需求拆解为结构化、可执行的原子任务。你只分析需求和分解任务，不实现任何代码。';
+}
+
+/**
  * Build user prompt for add sessions.
  * Structure: Role (primacy) → Context → CoT → TaskGuide → Instruction (recency)
  */
@@ -276,7 +285,7 @@ function buildAddPrompt(instruction) {
     '5. 分解任务：每个任务对应一个独立可测试的功能单元，description 简明（40字内），steps 具体可操作',
     '6. 追加到 tasks.json，id 和 priority 从已有最大值递增，status: pending',
     '7. git add -A && git commit -m "chore: add new tasks"',
-    '8. 写入 session_result.json',
+    '8. 写入 session_result.json（格式：{ "session_result": "success", "task_id": "add-tasks", "status_before": "N/A", "status_after": "N/A", "git_commit": "hash", "tests_passed": false, "notes": "追加了 N 个任务：简述" }）',
     '',
 
     // --- Quality constraints ---
@@ -295,5 +304,6 @@ module.exports = {
   buildCodingPrompt,
   buildTaskGuide,
   buildScanPrompt,
+  buildAddSystemPrompt,
   buildAddPrompt,
 };

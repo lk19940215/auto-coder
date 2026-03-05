@@ -85,7 +85,7 @@ flowchart TB
 
     subgraph SDK["Claude Agent SDK"]
         query["query() 函数"]
-        hook_sys["PreToolUse hook<br/>内联回调"]
+        hook_sys["PreToolUse hook<br/>hooks.js 工厂"]
     end
 
     subgraph Files["文件系统 (.claude-coder/)"]
@@ -154,11 +154,12 @@ flowchart LR
 ## 3. 模块职责
 
 ```
-bin/cli.js          CLI 入口：参数解析、命令路由、SDK peerDep 检查
+bin/cli.js          CLI 入口：参数解析、命令路由
 src/
   config.js         配置管理：.env 加载、模型映射、环境变量构建、全局同步
   runner.js         主循环：scan → session → validate → retry/rollback
-  session.js        SDK 交互：query() 调用、hook 绑定、停顿检测、日志流
+  session.js        SDK 交互：query() 调用、SDK 加载、日志流
+  hooks.js          Hook 工厂：停顿检测 + 编辑死循环防护（可复用于所有 session 类型）
   prompts.js        提示语构建：系统 prompt 组合 + 条件 hint + 任务分解指导
   init.js           环境初始化：读取 profile 执行依赖安装、服务启动、健康检查
   scanner.js        初始化扫描：调用 runScanSession + 重试
@@ -184,7 +185,8 @@ templates/
 | `bin/cli.js` | CLI 入口 |
 | `src/config.js` | .env 加载、模型映射 |
 | `src/runner.js` | Harness 主循环 |
-| `src/session.js` | SDK query() 封装 + hook |
+| `src/session.js` | SDK query() 封装 + 日志流 |
+| `src/hooks.js` | Hook 工厂（停顿检测 + 编辑防护，可复用于所有 session 类型） |
 | `src/prompts.js` | 提示语构建（系统 prompt + 条件 hint + 任务分解指导） |
 | `src/init.js` | 环境初始化（依赖安装、服务启动） |
 | `src/scanner.js` | 项目初始化扫描 |
@@ -250,7 +252,7 @@ flowchart TB
 |---|---|---|---|
 | **编码** | CLAUDE.md | `buildCodingPrompt()` + 11 个条件 hint | 主循环每次迭代 |
 | **扫描** | CLAUDE.md + SCAN_PROTOCOL.md | `buildScanPrompt()` + 任务分解指导 + profile 质量要求 | 首次运行 |
-| **追加** | CLAUDE.md | `buildAddPrompt()` + 任务分解指导 | `claude-coder add` |
+| **追加** | 精简角色提示（不注入 CLAUDE.md） | `buildAddPrompt()` + 任务分解指导 + session_result 格式 | `claude-coder add` |
 
 ### 编码 Session 的 11 个条件 Hint
 
@@ -372,19 +374,19 @@ flowchart TD
     end
 
     subgraph after ["优化后：Harness 注入上下文"]
-        B1["Harness 预读文件"] --> B2["注入 Hint 7: 任务上下文"]
-        B1 --> B3["注入 Hint 8: 会话记忆"]
+        B1["Harness 预读文件"] --> B2["注入 Hint 6: 任务上下文"]
+        B1 --> B3["注入 Hint 7: 会话记忆"]
         B2 --> B4["Agent prompt 就绪"]
         B3 --> B4
         B4 --> B5["Agent 直接开始编码"]
     end
 ```
 
-### Hint 7: 任务上下文注入
+### Hint 6: 任务上下文注入
 
 Harness 在 `buildCodingPrompt()` 中预读 `tasks.json`，将下一个待办任务的 id、description、category、steps 数量和整体进度注入 user prompt。Agent 无需自行读取 `tasks.json`。
 
-### Hint 8: 会话记忆注入
+### Hint 7: 会话记忆注入
 
 Harness 在 `buildCodingPrompt()` 中预读 `session_result.json`，将上次会话的 task_id、结果和 notes 摘要注入 user prompt。Agent 无需自行读取历史 session 数据。
 
@@ -472,19 +474,12 @@ query({
 
 | 方向 | 说明 |
 |------|------|
-| **文件保护 Deny-list** | PreToolUse hook 拦截对保护文件的写入（比文字规则更硬性） |
-| **成本预算控制** | `.env` 新增 `MAX_COST_USD`，超预算自动停止 |
-
-### P1 — 中期
-
-| 方向 | 说明 |
-|------|------|
 | **TCR 纪律** | Test && Commit \|\| Revert，可配置 strict/smart/off |
 | **配置分层** | defaults.env → .env → .env.local 三层合并 |
 | **Reminders 注入** | 用户自定义提醒文件，拼接到编码 prompt |
 | **MCP 工具自动检测** | `claude mcp list` 自动启用已安装工具 |
 
-### P2 — 远期
+### P1 — 远期
 
 | 方向 | 说明 |
 |------|------|

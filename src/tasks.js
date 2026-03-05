@@ -67,6 +67,22 @@ function setStatus(data, taskId, newStatus) {
   return task;
 }
 
+/**
+ * Harness-level forced status change (bypasses TRANSITIONS validation).
+ * Used when harness needs to mark tasks failed after max retries.
+ */
+function forceStatus(data, status) {
+  const features = getFeatures(data);
+  for (const f of features) {
+    if (f.status === 'in_progress') {
+      f.status = status;
+      saveTasks(data);
+      return f;
+    }
+  }
+  return null;
+}
+
 function addTask(data, task) {
   if (!data) {
     data = { project: '', created_at: new Date().toISOString().slice(0, 10), features: [] };
@@ -145,6 +161,7 @@ module.exports = {
   getFeatures,
   findNextTask,
   setStatus,
+  forceStatus,
   addTask,
   getStats,
   showStatus,
