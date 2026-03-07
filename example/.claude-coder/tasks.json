@@ -41,7 +41,7 @@
         "【实现】添加 GET / 路由，返回包含 API 名称和端点列表的 JSON",
         "【验证】curl -s http://localhost:3000/ | grep -q 'TODO API' && echo 'root route pass'"
       ],
-      "status": "pending",
+      "status": "done",
       "depends_on": ["feat-001"]
     }
   ]

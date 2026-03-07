@@ -1,4 +1,3 @@
 node_modules/
 .claude-coder/.env
 .claude-coder/.env.bak.*
-.claude-coder/.runtime/

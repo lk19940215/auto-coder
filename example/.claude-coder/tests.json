@@ -32,6 +32,14 @@
       "expected": "HTTP 204 No Content",
       "last_result": "pass",
       "last_run_session": 2
+    },
+    {
+      "id": "test-feat003-root",
+      "feature_id": "feat-003",
+      "verify": "curl -s http://localhost:3000/",
+      "expected": "HTTP 200, 返回包含 message: 'Welcome to TODO API' 和 endpoints 对象的 JSON",
+      "last_result": "pass",
+      "last_run_session": 1
     }
   ]
 }

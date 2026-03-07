@@ -10,6 +10,21 @@ app.use(express.json());
 let todos = [];
 let nextId = 1;
 
+// Root route - API welcome message
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Welcome to TODO API',
+    version: '1.0.0',
+    endpoints: {
+      health: 'GET /health',
+      todos: 'GET /api/todos',
+      createTodo: 'POST /api/todos',
+      updateTodo: 'PUT /api/todos/:id',
+      deleteTodo: 'DELETE /api/todos/:id'
+    }
+  });
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
