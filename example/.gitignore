@@ -2,4 +2,7 @@
 # Claude Coder（含 API Key 和临时文件）
 .claude-coder/.env
 .claude-coder/.runtime/
-!*.json
+!.claude-coder/tasks.json
+!.claude-coder/session_result.json
+!.claude-coder/tests.json
+!.claude-coder/project_profile.json
