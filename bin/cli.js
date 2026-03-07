@@ -47,7 +47,7 @@ function parseArgs(argv) {
         opts.max = parseInt(args[++i], 10) || 50;
         break;
       case '--pause':
-        opts.pause = parseInt(args[++i], 10) || 5;
+        { const v = parseInt(args[++i], 10); opts.pause = (v >= 0 && !isNaN(v)) ? v : 5; }
         break;
       case '--dry-run':
         opts.dryRun = true;

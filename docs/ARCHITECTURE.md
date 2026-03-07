@@ -25,7 +25,7 @@ Agent 在单次 session 中应最大化推进任务进度。**任何非致命问
 
 **反面案例**：Agent 因 `OPENAI_API_KEY` 缺失直接标记任务 `failed` → 浪费整个 session
 
-> Harness 兜底机制：当工具调用间隔超过 `SESSION_STALL_TIMEOUT`（默认 30 分钟）时自动中断 session 并触发 rollback + 重试。此阈值设计为远超正常思考时长，仅捕捉真正的卡死场景。
+> Harness 兜底机制：当工具调用间隔超过 `SESSION_STALL_TIMEOUT`（默认 20 分钟）时自动中断 session 并触发 rollback + 重试。此阈值设计为远超正常思考时长，仅捕捉真正的卡死场景。
 
 ### 规则 2：回滚即彻底回滚
 
@@ -60,15 +60,31 @@ Agent 在单次 session 中应最大化推进任务进度。**任何非致命问
 
 Agent 不应浪费工具调用读取 harness 已知的数据。所有可预读的上下文通过 prompt hint 注入（见第 5 节 Prompt 注入架构）。
 
-### 规则 6：停顿检测 — 模型卡死自动恢复
+### 规则 6：三层 Session 终止保护
 
-模型可能长时间「思考」但不调用工具（20+ 分钟无进展）。Harness 通过 PreToolUse hook 追踪最后一次工具调用时间：
+SDK 的 `query()` 循环在模型产出**无 tool_use 的纯文本响应**时自动结束。但非 Claude 模型（GLM/Qwen/DeepSeek）可能不正确返回 `stop_reason: "end_turn"`，导致 SDK 继续发起新 turn 或模型陷入长时间思考。三层可配置的保护机制按优先级互补：
 
-- 无工具调用 > `SESSION_STALL_TIMEOUT`（默认 1800 秒 / 30 分钟） → 自动中断 session
-- 中断后进入 runner 的重试逻辑（连续失败 ≥ 3 次 → 标记 task failed）
-- Spinner 在无工具调用 > 2 分钟时显示红色警告
+#### 第 1 层：完成检测（核心机制）
 
-配置方式：`.claude-coder/.env` 中设置 `SESSION_STALL_TIMEOUT=1800`（秒）
+PostToolUse hook 监测模型对 `session_result.json` 的写入（Write 工具和 Bash 重定向）。检测到写入后，将超时从 20 分钟**缩短至 5 分钟**。模型在此窗口内未自行终止 → 自动中断。
+
+**精准捕获「任务完成但 session 不终止」，不影响长时间自运行。**
+
+#### 第 2 层：停顿检测（通用兜底）
+
+每 30 秒检查最后一次工具调用时间。无工具调用 > `SESSION_STALL_TIMEOUT`（默认 1200 秒 / 20 分钟）→ 自动中断 session → runner 重试逻辑。
+
+#### 第 3 层：maxTurns（仅 CI 推荐）
+
+SDK 内置轮次计数。默认 0（无限制），仅 CI/pipeline 需要时启用。
+
+| 配置项 | 环境变量 | 默认值 | 说明 |
+|--------|---------|--------|------|
+| 完成检测超时 | `SESSION_COMPLETION_TIMEOUT` | 300 秒 | session_result 写入后的宽限期 |
+| 停顿超时 | `SESSION_STALL_TIMEOUT` | 1200 秒 | 长时间无工具调用 |
+| 最大轮次 | `SESSION_MAX_TURNS` | 0（无限制） | 仅 CI 推荐 |
+
+配置方式：`claude-coder setup` → 配置安全限制，或直接编辑 `.claude-coder/.env`。
 
 ---
 
@@ -81,7 +97,7 @@ flowchart TB
         scan["scanner.scan()<br/>首次扫描"]
         coding["session.runCodingSession()<br/>编码循环"]
         validate["validator.validate()<br/>校验"]
-        indicator["Indicator 类<br/>setInterval 500ms 刷新"]
+        indicator["Indicator 类<br/>setInterval 1s 刷新"]
     end
 
     subgraph SDK["Claude Agent SDK"]
@@ -166,7 +182,7 @@ src/
   config.js         配置管理：.env 加载、模型映射、环境变量构建
   runner.js         主循环：scan → session → validate → retry/rollback
   session.js        SDK 交互：query() 调用、SDK 加载、日志流
-  hooks.js          Hook 工厂：停顿检测 + 编辑死循环防护（可复用于所有 session 类型）
+  hooks.js          Hook 工厂：完成检测 + 停顿检测 + 编辑防护（可复用于所有 session 类型）
   prompts.js        提示语构建：renderTemplate 模板引擎 + 系统 prompt 组合 + 条件 hint
   init.js           环境初始化：读取 profile 执行依赖安装、服务启动、健康检查
   scanner.js        项目扫描：调用 runScanSession 生成 profile（不分解任务）+ 重试
@@ -199,7 +215,7 @@ templates/                       参考文档与部署文件
 | `src/config.js` | .env 加载、模型映射、环境变量构建 |
 | `src/runner.js` | Harness 主循环 |
 | `src/session.js` | SDK query() 封装 + 日志流 |
-| `src/hooks.js` | Hook 工厂（停顿检测 + 编辑防护，可复用于所有 session 类型） |
+| `src/hooks.js` | Hook 工厂（完成检测 + 停顿检测 + 编辑防护，可复用于所有 session 类型） |
 | `src/prompts.js` | 提示语构建（renderTemplate 模板引擎 + 条件 hint） |
 | `src/init.js` | 环境初始化（依赖安装、服务启动） |
 | `src/scanner.js` | 项目扫描（仅 profile，不分解任务） |
@@ -351,7 +367,7 @@ sequenceDiagram
 
     Note over SDK,Hook: 同步回调，return {decision: "allow"}
 
-    loop 每 500ms
+    loop 每 1s
         Ind->>Term: ⠋ [Session 3] 编码中 02:15 | 读取文件: ppt_generator.py
     end
 
@@ -416,10 +432,15 @@ Harness 在 `buildCodingPrompt()` 中预读 `session_result.json`，将上次会
 
 ### 自愈机制
 
-**编辑死循环检测**：PreToolUse hook 追踪每个文件的编辑次数，同一文件 Write/Edit 超 5 次 → `decision: "block"`。
+**编辑死循环检测**：PreToolUse hook 追踪每个文件的编辑次数，同一文件 Write/Edit 超阈值 → `decision: "block"`。
 
-**停顿超时检测**：每 30 秒检查 `indicator.lastToolTime`，若距上次工具调用超过 `SESSION_STALL_TIMEOUT`（默认 1800 秒 / 30 分钟），自动 `break` 退出并触发 rollback + 重试。
-> 注意：模型在处理复杂文件时可能出现 10-20 分钟的长时间思考，这是正常行为。超时设为 30 分钟以避免误杀正常思考。可通过 `.env` 中 `SESSION_STALL_TIMEOUT=秒数` 自定义。
+**完成检测**：PostToolUse hook 监测 `session_result.json` 的写入（Write 工具 + Bash 重定向），触发后将超时缩短至 `SESSION_COMPLETION_TIMEOUT`（默认 300 秒）。
+
+**停顿超时检测**：每 30 秒检查 `indicator.lastToolTime`，无工具调用超过 `SESSION_STALL_TIMEOUT`（默认 1200 秒 / 20 分钟）→ 自动中断 + rollback + 重试。
+
+**maxTurns**：`SESSION_MAX_TURNS > 0` 时启用 SDK 轮次计数器。默认 0 = 无限制。
+
+> 安全限制均可通过 `claude-coder setup` → 配置安全限制 调整。
 
 ### 文件权限模型
 

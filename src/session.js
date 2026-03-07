@@ -64,6 +64,7 @@ function buildQueryOptions(config, opts = {}) {
     env: buildEnvVars(config),
     settingSources: ['project'],
   };
+  if (config.maxTurns > 0) base.maxTurns = config.maxTurns;
   if (opts.model) base.model = opts.model;
   else if (config.model) base.model = config.model;
   return base;
@@ -136,6 +137,7 @@ async function runCodingSession(sessionNum, opts = {}) {
   writeSessionSeparator(logStream, sessionNum, `coding task=${taskId}`);
 
   const stallTimeoutMs = config.stallTimeout * 1000;
+  const completionTimeoutMs = config.completionTimeout * 1000;
   const abortController = new AbortController();
   const { hooks, cleanup, isStalled } = createSessionHooks(indicator, logStream, {
     enableStallDetection: true,
@@ -143,6 +145,7 @@ async function runCodingSession(sessionNum, opts = {}) {
     abortController,
     enableEditGuard: true,
     editThreshold: config.editThreshold,
+    completionTimeoutMs,
   });
 
   const stallTimeoutMin = Math.floor(stallTimeoutMs / 60000);
@@ -171,12 +174,20 @@ async function runCodingSession(sessionNum, opts = {}) {
     indicator.stop();
 
     const result = extractResult(collected);
+    const subtype = result?.subtype || 'unknown';
+    if (subtype !== 'success' && subtype !== 'unknown') {
+      log('warn', `session 结束原因: ${subtype} (turns: ${result?.num_turns ?? '?'})`);
+    }
+    if (logStream.writable) {
+      logStream.write(`[${new Date().toISOString()}] SESSION_END subtype=${subtype} turns=${result?.num_turns ?? '?'} cost=${result?.total_cost_usd ?? '?'}\n`);
+    }
     return {
       exitCode: isStalled() ? 2 : 0,
       cost: result?.total_cost_usd ?? null,
       tokenUsage: result?.usage ?? null,
       logFile,
       stalled: isStalled(),
+      subtype,
     };
   } catch (err) {
     cleanup();
@@ -210,11 +221,13 @@ async function runScanSession(requirement, opts = {}) {
   writeSessionSeparator(logStream, 0, `scan (${projectType})`);
 
   const stallTimeoutMs = config.stallTimeout * 1000;
+  const completionTimeoutMs = config.completionTimeout * 1000;
   const abortController = new AbortController();
   const { hooks, cleanup, isStalled } = createSessionHooks(indicator, logStream, {
     enableStallDetection: true,
     stallTimeoutMs,
     abortController,
+    completionTimeoutMs,
   });
 
   indicator.start(0, Math.floor(stallTimeoutMs / 60000));
@@ -274,11 +287,13 @@ async function runAddSession(instruction, opts = {}) {
   writeSessionSeparator(logStream, 0, 'add tasks');
 
   const stallTimeoutMs = config.stallTimeout * 1000;
+  const completionTimeoutMs = config.completionTimeout * 1000;
   const abortController = new AbortController();
   const { hooks, cleanup, isStalled } = createSessionHooks(indicator, logStream, {
     enableStallDetection: true,
     stallTimeoutMs,
     abortController,
+    completionTimeoutMs,
   });
 
   indicator.start(0, Math.floor(stallTimeoutMs / 60000));

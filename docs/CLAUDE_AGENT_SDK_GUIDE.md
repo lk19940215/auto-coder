@@ -117,7 +117,7 @@ const options = {
 
   // === 控制配置 ===
   abortController: new AbortController(),   // 中断控制器
-  maxTurns: 10,                             // 最大对话轮次
+  maxTurns: 200,                            // 最大轮次（1 turn = 模型 1 次响应，默认无限制，仅 CI 推荐）
 
   // === Hooks ===
   hooks: {
@@ -339,6 +339,49 @@ matcher: 'Write|Edit|Delete'  // 匹配文件修改类工具
 
 ---
 
+## Session 终止机制
+
+### 正常终止
+
+SDK 的 `query()` 循环在模型产出**无 tool_use 的纯文本响应**时自动结束：
+
+1. 模型响应包含 tool_use → SDK 执行工具 → 将结果发回模型 → 继续循环
+2. 模型响应为纯文本（无 tool_use）→ SDK yield `ResultMessage` → `for await` 循环结束
+
+### 完成检测（Harness 实现）
+
+PostToolUse hook 监测模型对 `session_result.json` 的写入（Write 工具和 Bash 重定向均可检测）。检测到写入后，将超时从 20 分钟缩短至 `SESSION_COMPLETION_TIMEOUT`（默认 300 秒 / 5 分钟）。
+
+工作原理：
+1. 模型完成任务 → 写入 `session_result.json`（harness 协议要求）
+2. PostToolUse hook 检测到写入 → 记录完成时间
+3. 5 分钟内模型未自行终止 → AbortController 中断
+
+**精准匹配问题场景，不限制工具调用能力，不影响长时间自运行。**
+
+### maxTurns（SDK 内置，仅 CI 推荐）
+
+`maxTurns` 控制最大轮次。1 turn = 模型 1 次响应（可含多个并行工具调用）。默认 0 = 无限制。
+
+> "A turn is one round trip inside the loop: Claude produces output that includes tool calls, the SDK executes those tools, and the results feed back to Claude automatically."
+
+### ResultMessage 子类型
+
+| subtype | 含义 | `result` 字段 |
+|---------|------|--------------|
+| `success` | 正常完成 | 有 |
+| `error_max_turns` | 超过 maxTurns | 无 |
+| `error_max_budget_usd` | 超过预算限制 | 无 |
+| `error_during_execution` | 运行时错误 | 无 |
+
+所有 subtype 均携带 `total_cost_usd`、`usage`、`num_turns`、`session_id`。
+
+### 非 Claude 模型注意事项
+
+通过兼容 API 使用 GLM、Qwen、DeepSeek 等模型时，可能不正确返回 `stop_reason: "end_turn"`，导致 SDK 继续发起新 turn。**完成检测**通过监测 `session_result.json` 的写入判断任务完成，不依赖 `stop_reason`。
+
+---
+
 ## 中断与超时
 
 ### AbortController
@@ -441,7 +484,7 @@ const myAgent = {
 4. 性能优化`,
   tools: ['Read', 'Glob', 'Grep'],  // 只读工具
   model: 'sonnet',  // 使用 sonnet 模型
-  maxTurns: 5,      // 限制轮次
+  maxTurns: 30,     // 子 agent 可适当限制轮次
 };
 ```
 

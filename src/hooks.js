@@ -3,7 +3,8 @@
 const { inferPhaseStep } = require('./indicator');
 const { log } = require('./config');
 
-const DEFAULT_EDIT_THRESHOLD = 30;
+const DEFAULT_EDIT_THRESHOLD = 15;
+const SESSION_RESULT_FILENAME = 'session_result.json';
 
 function logToolCall(logStream, input) {
   if (!logStream) return;
@@ -17,32 +18,74 @@ function logToolCall(logStream, input) {
 }
 
 /**
- * Create unified session hooks with configurable stall detection and edit guard.
+ * Detect whether a tool call writes to session_result.json.
+ * Covers both the Write tool (exact path match) and Bash redirect writes.
+ */
+function isSessionResultWrite(toolName, toolInput) {
+  if (toolName === 'Write') {
+    const target = toolInput?.file_path || toolInput?.path || '';
+    return target.endsWith(SESSION_RESULT_FILENAME);
+  }
+  if (toolName === 'Bash') {
+    const cmd = toolInput?.command || '';
+    if (!cmd.includes(SESSION_RESULT_FILENAME)) return false;
+    return />\s*[^\s]*session_result/.test(cmd);
+  }
+  return false;
+}
+
+/**
+ * Create unified session hooks with stall detection, edit guard,
+ * and completion detection (auto-shorten timeout after session_result written).
  * @param {Indicator} indicator
  * @param {WriteStream|null} logStream
  * @param {object} [options]
- * @param {boolean} [options.enableStallDetection=false]
- * @param {number}  [options.stallTimeoutMs=1800000]
- * @param {AbortController} [options.abortController] - 用于中断 SDK query
- * @param {boolean} [options.enableEditGuard=false]
+ * @param {boolean}         [options.enableStallDetection=false]
+ * @param {number}          [options.stallTimeoutMs=1200000]
+ * @param {AbortController} [options.abortController]
+ * @param {boolean}         [options.enableEditGuard=false]
+ * @param {boolean}         [options.enableCompletionDetection=true]
+ * @param {number}          [options.completionTimeoutMs=300000]
  * @returns {{ hooks: object, cleanup: () => void, isStalled: () => boolean }}
  */
 function createSessionHooks(indicator, logStream, options = {}) {
   const {
     enableStallDetection = false,
-    stallTimeoutMs = 1800000,
+    stallTimeoutMs = 1200000,
     abortController = null,
     enableEditGuard = false,
     editThreshold = DEFAULT_EDIT_THRESHOLD,
+    enableCompletionDetection = true,
+    completionTimeoutMs = 300000,
   } = options;
 
   const editCounts = {};
   let stallDetected = false;
   let stallChecker = null;
+  let completionDetectedAt = 0;
 
   if (enableStallDetection) {
     stallChecker = setInterval(() => {
-      const idleMs = Date.now() - indicator.lastToolTime;
+      const now = Date.now();
+      const idleMs = now - indicator.lastToolTime;
+
+      if (completionDetectedAt > 0) {
+        const sinceCompletion = now - completionDetectedAt;
+        if (sinceCompletion > completionTimeoutMs && !stallDetected) {
+          stallDetected = true;
+          const secSince = Math.floor(sinceCompletion / 1000);
+          log('warn', `session_result 已写入 ${secSince} 秒前，模型未自行终止，自动中断`);
+          if (logStream) {
+            logStream.write(`[${new Date().toISOString()}] COMPLETION_TIMEOUT: session_result 写入后 ${secSince}s 无终止，自动中断\n`);
+          }
+          if (abortController) {
+            abortController.abort();
+            log('warn', '已发送中断信号（完成检测）');
+          }
+          return;
+        }
+      }
+
       if (idleMs > stallTimeoutMs && !stallDetected) {
         stallDetected = true;
         const idleMin = Math.floor(idleMs / 60000);
@@ -50,7 +93,6 @@ function createSessionHooks(indicator, logStream, options = {}) {
         if (logStream) {
           logStream.write(`[${new Date().toISOString()}] STALL: 无工具调用 ${idleMin} 分钟，自动中断\n`);
         }
-        // 触发 AbortController 中断 SDK query
         if (abortController) {
           abortController.abort();
           log('warn', '已发送中断信号');
@@ -87,10 +129,22 @@ function createSessionHooks(indicator, logStream, options = {}) {
     }],
     PostToolUse: [{
       matcher: '*',
-      hooks: [async () => {
+      hooks: [async (input) => {
         indicator.updatePhase('thinking');
         indicator.updateStep('');
         indicator.toolTarget = '';
+
+        if (enableCompletionDetection && !completionDetectedAt) {
+          if (isSessionResultWrite(input.tool_name, input.tool_input)) {
+            completionDetectedAt = Date.now();
+            const shortMin = Math.ceil(completionTimeoutMs / 60000);
+            log('info', `检测到 session_result 写入，${shortMin} 分钟内模型未终止将自动中断`);
+            if (logStream) {
+              logStream.write(`[${new Date().toISOString()}] COMPLETION_DETECTED: session_result.json written, ${shortMin}min grace period\n`);
+            }
+          }
+        }
+
         return {};
       }]
     }],

@@ -326,7 +326,11 @@ function showCurrentConfig(existing) {
   console.log(`  BASE_URL:   ${existing.ANTHROPIC_BASE_URL || '默认'}`);
   console.log(`  模型:       ${existing.ANTHROPIC_MODEL || '默认'}`);
   console.log(`  MCP:        ${existing.MCP_PLAYWRIGHT === 'true' ? `已启用 (${existing.MCP_PLAYWRIGHT_MODE || 'persistent'})` : '未启用'}`);
-  console.log(`  超时中断:   ${existing.SESSION_STALL_TIMEOUT || '1800'} 秒`);
+  const compTimeout = existing.SESSION_COMPLETION_TIMEOUT || '300';
+  const turns = existing.SESSION_MAX_TURNS || '0';
+  console.log(`  停顿超时:   ${existing.SESSION_STALL_TIMEOUT || '1200'} 秒`);
+  console.log(`  完成检测:   ${compTimeout} 秒`);
+  console.log(`  工具轮次:   ${turns === '0' ? '无限制' : turns}`);
   console.log('');
 }
 
@@ -398,29 +402,56 @@ async function updateMCPOnly(rl) {
   log('ok', 'MCP 配置已更新');
 }
 
-async function updateStallTimeout(rl, existing) {
-  const current = existing.SESSION_STALL_TIMEOUT || '1800';
-  console.log(`当前超时设置: ${current} 秒 (${Math.floor(parseInt(current) / 60)} 分钟)`);
+async function updateSafetyLimits(rl, existing) {
+  const currentStall = existing.SESSION_STALL_TIMEOUT || '1200';
+  const currentCompletion = existing.SESSION_COMPLETION_TIMEOUT || '300';
+  const currentTurns = existing.SESSION_MAX_TURNS || '0';
+
+  console.log(`${COLOR.blue}当前安全限制:${COLOR.reset}`);
+  console.log(`  停顿超时:     ${currentStall} 秒 (${Math.floor(parseInt(currentStall) / 60)} 分钟)`);
+  console.log(`  完成检测超时: ${currentCompletion} 秒 (${Math.ceil(parseInt(currentCompletion) / 60)} 分钟)`);
+  console.log(`  最大工具轮次: ${currentTurns === '0' ? '无限制' : currentTurns}`);
   console.log('');
-  console.log('无工具调用超过此时间将自动中断 session');
+  console.log(`${COLOR.yellow}说明:${COLOR.reset}`);
+  console.log('  完成检测 — 模型写入 session_result.json 后缩短等待，解决"完成但不退出"');
+  console.log('  停顿超时 — 长时间无工具调用时自动中断（通用兜底）');
+  console.log('  最大轮次 — 限制总轮次，仅 CI 推荐（默认 0 = 无限制）');
   console.log('');
 
-  const input = await ask(rl, '输入新的超时秒数（回车保留当前）: ');
-  const val = input.trim();
-
-  if (!val) {
-    log('info', '保留当前设置');
-    return;
+  const stallInput = await ask(rl, `停顿超时秒数（回车保留 ${currentStall}）: `);
+  if (stallInput.trim()) {
+    const seconds = parseInt(stallInput.trim(), 10);
+    if (isNaN(seconds) || seconds < 60) {
+      log('warn', '停顿超时需 >= 60 秒，跳过');
+    } else {
+      updateEnvVar('SESSION_STALL_TIMEOUT', String(seconds));
+      log('ok', `停顿超时已设置为 ${seconds} 秒 (${Math.floor(seconds / 60)} 分钟)`);
+    }
   }
 
-  const seconds = parseInt(val, 10);
-  if (isNaN(seconds) || seconds < 60) {
-    log('warn', '请输入 >= 60 的数字');
-    return;
+  console.log('');
+  const compInput = await ask(rl, `完成检测超时秒数（回车保留 ${currentCompletion}）: `);
+  if (compInput.trim()) {
+    const seconds = parseInt(compInput.trim(), 10);
+    if (isNaN(seconds) || seconds < 30) {
+      log('warn', '完成检测超时需 >= 30 秒，跳过');
+    } else {
+      updateEnvVar('SESSION_COMPLETION_TIMEOUT', String(seconds));
+      log('ok', `完成检测超时已设置为 ${seconds} 秒`);
+    }
   }
 
-  updateEnvVar('SESSION_STALL_TIMEOUT', String(seconds));
-  log('ok', `超时已设置为 ${seconds} 秒 (${Math.floor(seconds / 60)} 分钟)`);
+  console.log('');
+  const turnsInput = await ask(rl, `最大工具轮次（回车保留 ${currentTurns === '0' ? '无限制' : currentTurns}，输入 0 = 无限制）: `);
+  if (turnsInput.trim()) {
+    const turns = parseInt(turnsInput.trim(), 10);
+    if (isNaN(turns) || turns < 0) {
+      log('warn', '请输入 >= 0 的整数，跳过');
+    } else {
+      updateEnvVar('SESSION_MAX_TURNS', String(turns));
+      log('ok', `最大工具轮次已设置为 ${turns === 0 ? '无限制' : turns}`);
+    }
+  }
 }
 
 // === 主函数 ===
@@ -467,8 +498,8 @@ async function setup() {
     console.log('  使用方式: claude-coder run "你的需求"');
     console.log('  重新配置: claude-coder setup');
     console.log('');
-    console.log(`  ${COLOR.yellow}超时中断: 默认 30 分钟无工具调用自动中断 session${COLOR.reset}`);
-    console.log(`  ${COLOR.yellow}调整方式: claude-coder setup → 配置超时中断${COLOR.reset}`);
+    console.log(`  ${COLOR.yellow}安全限制: 默认 20 分钟无工具调用自动中断，写入 session_result 后 5 分钟${COLOR.reset}`);
+    console.log(`  ${COLOR.yellow}调整方式: claude-coder setup → 配置安全限制${COLOR.reset}`);
     console.log('');
 
     rl.close();
@@ -485,7 +516,7 @@ async function setup() {
     console.log('  1) 切换模型提供商');
     console.log('  2) 更新 API Key');
     console.log('  3) 配置 MCP');
-    console.log('  4) 配置超时中断');
+    console.log('  4) 配置安全限制');
     console.log('  5) 完全重新配置');
     console.log('  6) 退出');
     console.log('');
@@ -518,7 +549,7 @@ async function setup() {
         break;
       }
       case 4: {
-        await updateStallTimeout(rl, existing);
+        await updateSafetyLimits(rl, existing);
         break;
       }
       case 5: {

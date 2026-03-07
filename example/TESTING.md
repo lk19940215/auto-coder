@@ -82,18 +82,54 @@ node ../bin/cli.js run --max 3
 node ../bin/cli.js validate
 ```
 
-## 超时中断
+## 终止保护
 
-默认 30 分钟无工具调用时自动中断当前 session 并触发回滚重试。模型在处理复杂文件时可能出现 10-20 分钟的思考间隔，这是正常行为。
+### 完成检测（核心）
 
-调整方式：
+模型写入 `session_result.json` 后（Write 工具或 Bash 重定向），超时从 20 分钟缩短至 5 分钟。
+
+### 停顿超时（兜底）
+
+默认 20 分钟无工具调用自动中断当前 session 并触发回滚重试。
+
+### maxTurns（仅 CI 推荐）
+
+默认 0 = 无限制。仅 CI/pipeline 需要时设置。
+
+### 调整方式
 
 ```bash
 node ../bin/cli.js setup
-# 选择「4) 配置超时中断」
+# 选择「4) 配置安全限制」
 ```
 
-或直接编辑 `example/.claude-coder/.env` 中的 `SESSION_STALL_TIMEOUT=1800`（单位：秒）。
+或直接编辑 `example/.claude-coder/.env`：
+
+```env
+SESSION_COMPLETION_TIMEOUT=300   # 完成检测超时（秒），默认 300
+SESSION_STALL_TIMEOUT=1200       # 停顿超时（秒），默认 1200
+SESSION_MAX_TURNS=0              # 最大轮次，0=无限制
+```
+
+### 测试终止保护
+
+**测试完成检测**：
+
+```bash
+# 缩短完成检测超时到 30 秒，便于观察
+# 编辑 .claude-coder/.env: SESSION_COMPLETION_TIMEOUT=30
+node ../bin/cli.js run --max 1
+# 观察日志：COMPLETION_DETECTED 后 30 秒内应自动中断（如果模型未自行终止）
+```
+
+**测试停顿超时**：
+
+```bash
+# 缩短停顿超时到 2 分钟
+# 编辑 .claude-coder/.env: SESSION_STALL_TIMEOUT=120
+node ../bin/cli.js run --max 1
+# 如果模型卡在思考，2 分钟后会触发 STALL 中断
+```
 
 ## 清理测试环境
 
