@@ -4,19 +4,6 @@
 # Node
 node_modules/
 
-# Claude Coder 运行时（由 claude-coder 在用户项目中生成）
-.claude-coder/.env
-.claude-coder/.runtime/
-.claude-coder/project_profile.json
-.claude-coder/tasks.json
-.claude-coder/progress.json
-.claude-coder/session_result.json
-.claude-coder/tests.json
 
 .claude/
 .playwright-mcp/
-
-# Example 测试目录运行时产物
-example/.claude-coder/
-example/.mcp.json
-example/.claude/

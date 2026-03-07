@@ -467,12 +467,15 @@ async function setup() {
     console.log('  使用方式: claude-coder run "你的需求"');
     console.log('  重新配置: claude-coder setup');
     console.log('');
+    console.log(`  ${COLOR.yellow}超时中断: 默认 30 分钟无工具调用自动中断 session${COLOR.reset}`);
+    console.log(`  ${COLOR.yellow}调整方式: claude-coder setup → 配置超时中断${COLOR.reset}`);
+    console.log('');
 
     rl.close();
     return;
   }
 
-  // 已有配置：循环菜单
+  // 已有配置：菜单选择
   while (true) {
     existing = parseEnvFile(p.envFile);
     showCurrentConfig(existing);
@@ -533,6 +536,10 @@ async function setup() {
         break;
       }
     }
+
+    console.log('');
+    const cont = await ask(rl, '继续配置其他项？(y/N) ');
+    if (!/^[Yy]/.test(cont.trim())) break;
   }
 
   rl.close();

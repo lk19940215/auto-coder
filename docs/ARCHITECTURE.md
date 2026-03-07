@@ -134,7 +134,7 @@ flowchart LR
     profile_out --> checkTasks{tasks.json<br/>存在?}
 
     checkProfile -->|是| checkTasks
-    checkTasks -->|否| confirm["用户确认:<br/>是否分解任务?"]
+    checkTasks -->|否| confirm["用户确认:<br/>是否分解任务?<br/>(非 TTY 自动跳过)"]
     confirm -->|是| addSession["runAddSession()<br/>分解任务"]
     addSession --> loop
     confirm -->|否| exitNoTask([提示手动 add])

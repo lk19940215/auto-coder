@@ -46,9 +46,11 @@ node ../bin/cli.js run --max 1
 
 这会依次执行：
 1. **scan** — 识别为新项目，搭建脚手架，生成 `project_profile.json`
-2. **用户确认** — 提示是否分解任务
+2. **用户确认** — 提示「是否继续？(y/n)」，输入 y 进入任务分解
 3. **add** — 读取 `requirements.md`，分解为 `tasks.json`
 4. **coding session** — 执行第一个任务
+
+> **注意**：步骤 2 会阻塞等待键盘输入。如果通过脚本自动执行（如 CI），可通过管道传入 `echo y | node ../bin/cli.js run --max 1`，非 TTY 模式下会自动跳过确认。
 
 ### 4. 手动追加任务
 
@@ -80,6 +82,19 @@ node ../bin/cli.js run --max 3
 node ../bin/cli.js validate
 ```
 
+## 超时中断
+
+默认 30 分钟无工具调用时自动中断当前 session 并触发回滚重试。模型在处理复杂文件时可能出现 10-20 分钟的思考间隔，这是正常行为。
+
+调整方式：
+
+```bash
+node ../bin/cli.js setup
+# 选择「4) 配置超时中断」
+```
+
+或直接编辑 `example/.claude-coder/.env` 中的 `SESSION_STALL_TIMEOUT=1800`（单位：秒）。
+
 ## 清理测试环境
 
 重置到初始状态，可重新测试完整流程：
@@ -103,7 +118,14 @@ Remove-Item -Recurse -Force .claude-coder, .mcp.json, .claude -ErrorAction Silen
 
 | 文件 | 用途 | git 状态 |
 |------|------|----------|
-| `requirements.md` | 示例需求输入 | 已提交 |
-| `TESTING.md` | 本文件，测试指南 | 已提交 |
-| `.claude-coder/` | 运行时数据（自动生成） | gitignored |
-| `.mcp.json` | MCP 配置（自动生成） | gitignored |
+| `requirements.md` | 示例需求输入 | 跟踪 |
+| `TESTING.md` | 本文件，测试指南 | 跟踪 |
+| `.mcp.json` | MCP 配置（自动生成） | 跟踪 |
+| `.claude-coder/tasks.json` | 任务列表 | 跟踪 |
+| `.claude-coder/session_result.json` | 上次 session 结果 | 跟踪 |
+| `.claude-coder/project_profile.json` | 项目扫描结果 | 跟踪 |
+| `.claude-coder/tests.json` | 验证记录 | 跟踪 |
+| `.claude-coder/test_rule.md` | 测试规则 | 跟踪 |
+| `.claude-coder/.env` | API Key 等敏感配置 | gitignored |
+| `.claude-coder/.runtime/` | 日志、浏览器 profile | gitignored |
+| `node_modules/` | 依赖 | gitignored |
