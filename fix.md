@@ -1,3 +1,71 @@
+需要找地方拆入的文案
+```
+### SSE / 流式生成任务的等待策略（详细版）
+
+当测试涉及 AI 生成、文件转换、SSE 流式处理等需要较长时间的场景时，必须使用 `browser_wait_for` 并设置**足够长的 timeout**。
+
+#### 1. 按操作类型设置 timeout
+
+| 操作类型 | 推荐 timeout | 说明 |
+|---------|------------|------|
+| 表单提交/普通 API | 10000 (10秒) | 短时同步操作 |
+| 图片上传 + OCR 识别 | 30000 (30秒) | 包含文件上传和文本识别 |
+| 文字输入 → 生成 PPT | 180000 (180秒) | 核心生成流程，LLM 调用 |
+| /merge 页面合并生成 | 180000 (180秒) | 智能合并，多轮 LLM 调用 |
+| 多文件批量处理 | 300000 (300秒) | 超长任务 |
+
+#### 2. 完整测试步骤模板
+
+```json
+{
+  "steps": [
+    "【环境】curl http://localhost:8000/health 确认服务正常",
+    "【P0】browser_navigate http://localhost:3000/merge",
+    "【P0】browser_snapshot 验证页面加载",
+    "【P0】browser_file_upload paths=[PPT A 文件]",
+    "【P0】browser_wait_for text='共 5 页' timeout=10000",
+    "【P0】browser_file_upload paths=[PPT B 文件]",
+    "【P0】browser_wait_for text='共 10 页' timeout=10000",
+    "【P0】browser_click ref=[合并按钮ref]",
+    "【P0】browser_wait_for text='合并成功' timeout=180000",  // 关键：等待完整流程
+    "【P0】browser_snapshot 验证下载链接出现",
+    "【记录】测试结果写入 record/"
+  ]
+}
+```
+
+#### 3. 等待策略最佳实践
+
+**✅ 正确做法：**
+- 触发生成操作后，立即使用 `browser_wait_for` 等待最终完成标志（如"预览"、"下载"、"成功"）
+- 设置的 timeout 必须覆盖最长可能的执行时间（180 秒）
+- 失败时才调用 `browser_console_messages` 分析，不提前跳转
+
+**❌ 错误做法：**
+- 触发生成后等待几秒就跳转到其他验证
+- 直接调用后端 API 验证而不等待前端完整流程
+- 设置过短的 timeout（如 10-30 秒）导致误判失败
+
+#### 4. 特殊情况处理
+
+- **超时失败**：等待 180 秒后仍未完成，记录为失败，不重试
+- **网络错误**：等待过程中出现 401/500 等错误，立即停止该场景
+- **进度卡住**：等待 180 秒但进度无变化（如一直显示 40%），记录为失败
+```
+
+# 待输入的问题
+```
+你是一个资深的架构师，擅长 harness工具开发。阅读本文件所有代码，处理以下问题：
+1.  claude-coder add 支持，或者默认使用 "/plan" 模式
+2.   @docs/CLAUDE_AGENT_SDK_GUIDE.md  把 hook 所有的 hook 类型，都使用起来。
+3. skill 系统如何接入本工具里面使用，是直接读 ".claude/skill" 目录自己发现，还是维护一个表，显示的声明有哪些 skill?
+4  @fix.md 中的实例，我觉得有必要加在某个文档里。 调研，如果 MCP集成需要在 allowedTools 里面声明，那检测 config.env 里面的配置，如果开启了，将 Playwright mcp所有的工具，都注入。感觉是冗余的。 
+5  “ **browser_wait_for timeout 限制**: 设置 180 秒但实际只等待 30 秒（Playwright MCP 工具限制）" 这一句，该如何修改文档，才能让AI自运行的时候，不断的等待结果。
+6. 我想基于 @next_version/PHASE_INJECTION_RESEARCH.md 中的 
+```
+
+# 方案
+```
 # 分阶段提示语注入 — 技术调研与方向探讨（2026年3月更新）
 
 > 状态：调研完成，方案验证可行
@@ -250,3 +318,4 @@ const session = sdk.query({
 4. **Plan支持**: 虽然SDK无原生plan功能，但可通过子Agent和多轮对话实现规划能力
 
 **推荐立即行动**: 优先实施P0 Bash命令拦截，这是最短路径、最高确定性的优化，不依赖新SDK特性，且对所有模型都有效。
+```

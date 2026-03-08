@@ -1,25 +1,19 @@
-# TODO API
+# Web页面搭建，展示Todo列表
 
-使用 Node.js + Express 实现一个简单的 TODO 待办事项 API。
+基于 React 18 + TypeScript + Vite 构建的现代化前端应用。
 
-## 功能需求
+## 技术栈
 
-1. **CRUD 接口**
-   - `GET /api/todos` — 获取所有待办事项
-   - `POST /api/todos` — 创建待办事项（body: `{ "title": "..." }`）
-   - `PUT /api/todos/:id` — 更新待办事项状态（body: `{ "completed": true }`）
-   - `DELETE /api/todos/:id` — 删除待办事项
+- **框架**: React 18 + TypeScript
+- **构建工具**: Vite
+- **UI 库**: Mantine v7
+- **样式**: Tailwind CSS
+- **状态管理**: Zustand
+- **HTTP 客户端**: Axios
+- **路由**: React Router v6
+- **图标**: Tabler Icons
 
-2. **数据存储**
-   - 使用内存数组存储（不需要数据库）
-   - 每个 TODO 包含 `id`、`title`、`completed`、`createdAt` 字段
+# 要求
+   不需要的技术栈，可以不用添加
 
-3. **健康检查**
-   - `GET /health` 返回 `{ "status": "ok" }`
-
-## 技术约束
-
-- Node.js + Express
-- 端口 3000
-- 不使用 TypeScript
-- 不使用数据库
+你调研一下，一个TODO List应用，应该有的页面，交互。UI效果也要美观。
