@@ -60,7 +60,7 @@
         "配置环境变量 VITE_API_URL=http://localhost:3000",
         "【验证】cd frontend && npm run dev 启动无报错"
       ],
-      "status": "pending",
+      "status": "done",
       "depends_on": []
     },
     {
