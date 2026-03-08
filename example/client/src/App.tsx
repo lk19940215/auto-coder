@@ -1,95 +1,91 @@
-import { useEffect } from 'react'
-import {
-  Container,
-  Paper,
-  Title,
-  Text,
-  Group,
-  Badge,
-  Divider,
-  Center,
-} from '@mantine/core'
-import { IconList } from '@tabler/icons-react'
-import { useTodoStore } from './store/todoStore'
-import { TodoList } from './components/TodoList'
-import { TodoForm } from './components/TodoForm'
-import { FilterBar } from './components/FilterBar'
+import { AppShell, Burger, Group, Anchor, UnstyledButton, Text } from '@mantine/core'
+import { useDisclosure } from '@mantine/hooks'
+import { IconList, IconInfoCircle } from '@tabler/icons-react'
+import { Outlet, Link, useLocation } from 'react-router-dom'
 
 function App() {
-  const { todos, filter, loading, error, fetchTodos, addTodo, toggleTodo, deleteTodo, setFilter } = useTodoStore()
+  const [mobileOpened, { toggle: toggleMobile }] = useDisclosure()
+  const [desktopOpened, { toggle: toggleDesktop }] = useDisclosure(true)
+  const location = useLocation()
 
-  // 组件挂载时获取数据
-  useEffect(() => {
-    fetchTodos()
-  }, [])
+  const navLinks = [
+    { path: '/', label: '首页', icon: IconList },
+    { path: '/about', label: '关于', icon: IconInfoCircle },
+  ]
 
-  const completedCount = todos.filter(t => t.completed).length
-  const totalCount = todos.length
-
-  // 根据过滤条件过滤数据
-  const filteredTodos = todos.filter(todo => {
-    if (filter === 'active') return !todo.completed
-    if (filter === 'completed') return todo.completed
-    return true
-  })
+  const isActive = (path: string) => {
+    if (path === '/') {
+      return location.pathname === '/'
+    }
+    return location.pathname.startsWith(path)
+  }
 
   return (
-    <Container size="md" className="py-8">
-      {/* 标题区域 */}
-      <Center mb="xl">
-        <div className="text-center">
-          <Title order={1} className="heading-primary flex items-center justify-center gap-3">
-            <IconList size={40} stroke={1.5} />
-            TODO 待办事项
-          </Title>
-          <Text c="dimmed" size="lg">
-            管理你的任务，提高效率
-          </Text>
-        </div>
-      </Center>
-
-      {/* 统计信息卡片 */}
-      <Paper p="lg" radius="lg" shadow="md" mb="lg" className="card-custom">
-        <Group justify="space-between">
-          <div>
-            <Text size="sm" c="dimmed">总任务数</Text>
-            <Title order={4}>{totalCount}</Title>
-          </div>
-          <Divider orientation="vertical" />
-          <div>
-            <Text size="sm" c="dimmed">已完成</Text>
-            <Title order={4} c="green">{completedCount}</Title>
-          </div>
-          <Divider orientation="vertical" />
-          <div>
-            <Text size="sm" c="dimmed">进行中</Text>
-            <Title order={4} c="blue">{totalCount - completedCount}</Title>
-          </div>
-          <Badge size="lg" color="blue" variant="light">
-            {totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0}% 完成
-          </Badge>
+    <AppShell
+      header={{ height: 60 }}
+      navbar={{
+        width: 200,
+        breakpoint: 'sm',
+        collapsed: { mobile: !mobileOpened, desktop: !desktopOpened },
+      }}
+      padding="md"
+    >
+      <AppShell.Header>
+        <Group h="100%" px="md">
+          <Burger
+            opened={mobileOpened}
+            onClick={toggleMobile}
+            hiddenFrom="sm"
+            size="sm"
+          />
+          <Burger
+            opened={desktopOpened}
+            onClick={toggleDesktop}
+            visibleFrom="sm"
+            size="sm"
+          />
+          <Group gap="sm" className="flex items-center">
+            <IconList size={24} stroke={1.5} />
+            <Text fw={600} size="lg">TODO 待办事项</Text>
+          </Group>
         </Group>
-      </Paper>
+      </AppShell.Header>
 
-      {/* 添加任务表单 */}
-      <TodoForm onAdd={addTodo} loading={loading} />
+      <AppShell.Navbar p="md">
+        <nav>
+          {navLinks.map((link) => {
+            const Icon = link.icon
+            const active = isActive(link.path)
+            return (
+              <Anchor key={link.path} component={Link} to={link.path} underline="never">
+                <UnstyledButton
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px',
+                    marginBottom: '4px',
+                    borderRadius: '8px',
+                    backgroundColor: active ? 'var(--mantine-color-blue-light)' : 'transparent',
+                    color: active ? 'var(--mantine-color-blue-6)' : 'var(--mantine-color-black)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                  className="hover-bg-blue-light"
+                >
+                  <Group gap="sm">
+                    <Icon size={20} stroke={1.5} />
+                    <Text fw={active ? 600 : 400}>{link.label}</Text>
+                  </Group>
+                </UnstyledButton>
+              </Anchor>
+            )
+          })}
+        </nav>
+      </AppShell.Navbar>
 
-      <Divider my="lg" />
-
-      {/* 过滤栏 */}
-      <FilterBar filter={filter} onFilterChange={setFilter} />
-
-      <Divider my="lg" />
-
-      {/* 任务列表组件 */}
-      <TodoList
-        todos={filteredTodos}
-        loading={loading}
-        error={error}
-        onToggle={toggleTodo}
-        onDelete={deleteTodo}
-      />
-    </Container>
+      <AppShell.Main>
+        <Outlet />
+      </AppShell.Main>
+    </AppShell>
   )
 }
 

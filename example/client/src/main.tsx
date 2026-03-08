@@ -1,10 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { MantineProvider, createTheme } from '@mantine/core'
 import '@mantine/core/styles.css'
 import { Notifications } from '@mantine/notifications'
 import './index.css'
 import App from './App.tsx'
+import { HomePage } from './pages/HomePage'
+import { AboutPage } from './pages/AboutPage'
 
 // 创建自定义 Mantine 主题
 const theme = createTheme({
@@ -37,9 +40,16 @@ const theme = createTheme({
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <MantineProvider theme={theme}>
-      <Notifications position="top-right" />
-      <App />
-    </MantineProvider>
+    <BrowserRouter>
+      <MantineProvider theme={theme}>
+        <Notifications position="top-right" />
+        <Routes>
+          <Route path="/" element={<App />}>
+            <Route index element={<HomePage />} />
+            <Route path="about" element={<AboutPage />} />
+          </Route>
+        </Routes>
+      </MantineProvider>
+    </BrowserRouter>
   </StrictMode>,
 )
