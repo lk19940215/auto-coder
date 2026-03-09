@@ -127,7 +127,7 @@ your-project/
 - 最稳定
 - 最不跑偏
 - 适合 长时间 Agent
-  ```
+  ```bash
   ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5
   ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3-coder-next
   ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3-coder-plus
@@ -139,7 +139,7 @@ your-project/
 - reasoning 最强
 - debug 能力最强
 - 复杂 coding 任务最好
-  ```
+  ```bash
   ANTHROPIC_DEFAULT_OPUS_MODEL=qwen3-max-2026-01-23
   ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3-coder-next
   ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3-coder-plus
