@@ -120,6 +120,33 @@ your-project/
 - [技术架构](docs/ARCHITECTURE.md) — 核心设计规则、模块职责、提示语注入架构、注意力机制、Hook 数据流
 - [测试凭证持久化方案](docs/PLAYWRIGHT_CREDENTIALS.md) — 自动测试的凭证管理：Playwright 登录态导出、API Key 持久化、Agent 缺凭证时的行为策略
 
+## 建议配置
+
+### 长时间自运行 Agent（最稳）
+特点：
+- 最稳定
+- 最不跑偏
+- 适合 长时间 Agent
+  ```
+  ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5
+  ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3-coder-next
+  ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3-coder-plus
+  ANTHROPIC_SMALL_FAST_MODEL=MiniMax-M2.5
+  ANTHROPIC_MODEL=kimi-k2.5
+  ```
+### 自用 Claude Code（最强）
+特点：
+- reasoning 最强
+- debug 能力最强
+- 复杂 coding 任务最好
+  ```
+  ANTHROPIC_DEFAULT_OPUS_MODEL=qwen3-max-2026-01-23
+  ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3-coder-next
+  ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3-coder-plus
+  ANTHROPIC_SMALL_FAST_MODEL=MiniMax-M2.5
+  ANTHROPIC_MODEL=glm-5
+  ```
+
 ## License
 
 MIT
