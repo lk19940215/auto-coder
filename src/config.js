@@ -50,8 +50,14 @@ function getPromptPath(name) {
 function paths() {
   const loopDir = getLoopDir();
   const runtime = path.join(loopDir, '.runtime');
+  const assetsDir = path.join(loopDir, 'assets');
   return {
     loopDir,
+    assetsDir,
+    // User config files
+    userGuidanceFile: path.join(assetsDir, 'guidance.json'),
+    userTestRule:     path.join(assetsDir, 'test_rule.md'),
+    // Standard files
     envFile:          path.join(loopDir, '.env'),
     tasksFile:        path.join(loopDir, 'tasks.json'),
     progressFile:     path.join(loopDir, 'progress.json'),
@@ -62,13 +68,16 @@ function paths() {
     playwrightAuth:   path.join(loopDir, 'playwright-auth.json'),
     browserProfile:   path.join(runtime, 'browser-profile'),
     mcpConfig:        path.join(getProjectRoot(), '.mcp.json'),
-    claudeMd:         getPromptPath('CLAUDE.md'),
-    scanProtocol:     getPromptPath('SCAN_PROTOCOL.md'),
-    addGuide:         getPromptPath('ADD_GUIDE.md'),
-    codingUser:       getPromptPath('coding_user.md'),
-    scanUser:         getPromptPath('scan_user.md'),
-    addUser:          getPromptPath('add_user.md'),
-    testRuleTemplate: getTemplatePath('test_rule.md'),
+    // Template files
+    claudeMd:            getPromptPath('CLAUDE.md'),
+    scanProtocol:        getPromptPath('SCAN_PROTOCOL.md'),
+    addGuide:            getPromptPath('ADD_GUIDE.md'),
+    codingUser:          getPromptPath('coding_user.md'),
+    scanUser:            getPromptPath('scan_user.md'),
+    addUser:             getPromptPath('add_user.md'),
+    testRuleTemplate:    getTemplatePath('test_rule.md'),
+    guidanceTemplate:    getTemplatePath('guidance.json'),
+    // Directories
     runtime,
     logsDir:          path.join(runtime, 'logs'),
   };
@@ -117,6 +126,8 @@ function loadConfig() {
     completionTimeout: parseInt(env.SESSION_COMPLETION_TIMEOUT, 10) || 300,
     maxTurns: parseInt(env.SESSION_MAX_TURNS, 10) || 0,
     editThreshold: parseInt(env.EDIT_THRESHOLD, 10) || 15,
+    simplifyInterval: parseInt(env.SIMPLIFY_INTERVAL, 10) || 0,
+    simplifyCommits: parseInt(env.SIMPLIFY_COMMITS, 10) || 3,
     raw: env,
   };
 

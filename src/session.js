@@ -2,10 +2,12 @@
 
 const fs = require('fs');
 const path = require('path');
-const { paths, loadConfig, buildEnvVars, getAllowedTools, log } = require('./config');
+const { execSync } = require('child_process');
+const { paths, loadConfig, buildEnvVars, getAllowedTools, log, getProjectRoot } = require('./config');
 const { Indicator } = require('./indicator');
-const { createSessionHooks } = require('./hooks');
+const { createHooks } = require('./hooks');
 const { buildSystemPrompt, buildCodingPrompt, buildScanPrompt, buildAddSystemPrompt, buildAddPrompt } = require('./prompts');
+const { runPlanSession } = require('./plan');
 
 // ── SDK loader (cached, shared across sessions) ──
 
@@ -141,11 +143,9 @@ async function runCodingSession(sessionNum, opts = {}) {
   const stallTimeoutMs = config.stallTimeout * 1000;
   const completionTimeoutMs = config.completionTimeout * 1000;
   const abortController = new AbortController();
-  const { hooks, cleanup, isStalled } = createSessionHooks(indicator, logStream, {
-    enableStallDetection: true,
+  const { hooks, cleanup, isStalled } = createHooks('coding', indicator, logStream, {
     stallTimeoutMs,
     abortController,
-    enableEditGuard: true,
     editThreshold: config.editThreshold,
     completionTimeoutMs,
   });
@@ -225,8 +225,7 @@ async function runScanSession(requirement, opts = {}) {
   const stallTimeoutMs = config.stallTimeout * 1000;
   const completionTimeoutMs = config.completionTimeout * 1000;
   const abortController = new AbortController();
-  const { hooks, cleanup, isStalled } = createSessionHooks(indicator, logStream, {
-    enableStallDetection: true,
+  const { hooks, cleanup, isStalled } = createHooks('scan', indicator, logStream, {
     stallTimeoutMs,
     abortController,
     completionTimeoutMs,
@@ -279,9 +278,6 @@ async function runAddSession(instruction, opts = {}) {
   applyEnvConfig(config);
   const indicator = new Indicator();
 
-  const systemPrompt = buildAddSystemPrompt();
-  const prompt = buildAddPrompt(instruction);
-
   const p = paths();
   const logFile = path.join(p.logsDir, `add_tasks_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.log`);
   const logStream = fs.createWriteStream(logFile, { flags: 'a' });
@@ -291,27 +287,48 @@ async function runAddSession(instruction, opts = {}) {
   const stallTimeoutMs = config.stallTimeout * 1000;
   const completionTimeoutMs = config.completionTimeout * 1000;
   const abortController = new AbortController();
-  const { hooks, cleanup, isStalled } = createSessionHooks(indicator, logStream, {
-    enableStallDetection: true,
+  const { hooks, cleanup, isStalled } = createHooks('add', indicator, logStream, {
     stallTimeoutMs,
     abortController,
     completionTimeoutMs,
   });
 
   indicator.start(0, Math.floor(stallTimeoutMs / 60000));
-  log('info', '正在追加任务...');
+  log('info', '正在生成计划方案...');
 
   try {
+    // ========== Phase 1: 生成 plan.md ==========
+    const planResult = await runPlanSession(instruction, {
+      ...opts,
+      indicator,
+      logStream,
+    });
+
+    if (!planResult.success) {
+      log('error', `计划生成失败: ${planResult.reason || planResult.error}`);
+      cleanup();
+      logStream.end();
+      indicator.stop();
+      return { success: false, reason: planResult.reason };
+    }
+
+    log('ok', `计划已生成: ${planResult.targetPath}`);
+
+    // ========== Phase 2: 转换为 tasks.json ==========
+    log('info', '正在生成任务列表...');
+
+    const tasksPrompt = buildAddPrompt(planResult.targetPath);
+
     const queryOpts = buildQueryOptions(config, opts);
-    queryOpts.systemPrompt = systemPrompt;
+    queryOpts.systemPrompt = buildAddSystemPrompt();
     queryOpts.hooks = hooks;
     queryOpts.abortController = abortController;
 
-    const session = sdk.query({ prompt, options: queryOpts });
+    const session = sdk.query({ prompt: tasksPrompt, options: queryOpts });
 
     for await (const message of session) {
       if (isStalled()) {
-        log('warn', '追加任务停顿超时，中断');
+        log('warn', '任务生成停顿超时，中断');
         break;
       }
       logMessage(message, logStream, indicator);
@@ -321,11 +338,14 @@ async function runAddSession(instruction, opts = {}) {
     logStream.end();
     indicator.stop();
     log('ok', '任务追加完成');
+    return { success: true, planPath: planResult.targetPath };
+
   } catch (err) {
     cleanup();
     logStream.end();
     indicator.stop();
     log('error', `任务追加失败: ${err.message}`);
+    return { success: false, error: err.message };
   }
 }
 
@@ -345,10 +365,77 @@ function hasCodeFiles(projectRoot) {
   return false;
 }
 
+async function runSimplifySession(n = 3, opts = {}) {
+  const sdk = await loadSDK();
+  const config = loadConfig();
+  applyEnvConfig(config);
+  const indicator = new Indicator();
+
+  // 获取最近 N 个 commit 的 diff
+  const projectRoot = getProjectRoot();
+  let diff = '';
+  try {
+    diff = execSync(`git diff HEAD~${n}..HEAD`, { cwd: projectRoot, encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
+  } catch (err) {
+    log('warn', `无法获取最近 ${n} 个 commit 的 diff: ${err.message}`);
+    diff = '';
+  }
+
+  const prompt = `/simplify\n\n审查范围：最近 ${n} 个 commit\n\n${diff.slice(0, 50000)}`;
+
+  const p = paths();
+  const logFile = path.join(p.logsDir, `simplify_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.log`);
+  const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+
+  writeSessionSeparator(logStream, 0, 'simplify');
+
+  const stallTimeoutMs = config.stallTimeout * 1000;
+  const completionTimeoutMs = config.completionTimeout * 1000;
+  const abortController = new AbortController();
+  const { hooks, cleanup, isStalled } = createHooks('simplify', indicator, logStream, {
+    stallTimeoutMs,
+    abortController,
+    completionTimeoutMs,
+  });
+
+  indicator.start(0, Math.floor(stallTimeoutMs / 60000));
+  log('info', `正在审查最近 ${n} 个 commit 的代码变更...`);
+
+  try {
+    const queryOpts = buildQueryOptions(config, opts);
+    queryOpts.maxTurns = 1;  // 单 turn，最低 token
+    queryOpts.hooks = hooks;
+    queryOpts.abortController = abortController;
+
+    const session = sdk.query({ prompt, options: queryOpts });
+
+    for await (const message of session) {
+      if (isStalled()) {
+        log('warn', '审查停顿超时，中断');
+        break;
+      }
+      logMessage(message, logStream, indicator);
+    }
+
+    cleanup();
+    logStream.end();
+    indicator.stop();
+    log('ok', '代码审查完成');
+  } catch (err) {
+    cleanup();
+    logStream.end();
+    indicator.stop();
+    log('error', `代码审查失败: ${err.message}`);
+  }
+}
+
+// --------------- Exports ---------------
+
 module.exports = {
   loadSDK,
   runCodingSession,
   runScanSession,
   runAddSession,
+  runSimplifySession,
   hasCodeFiles,
 };

@@ -266,6 +266,25 @@ async function run(opts = {}) {
       } else {
         log('ok', `Session ${session} 校验通过`);
       }
+
+      // 定期运行 simplify 代码审查
+      const config = loadConfig();
+      const simplifyInterval = config.simplifyInterval || 0;
+      if (simplifyInterval > 0 && session % simplifyInterval === 0) {
+        log('info', `每 ${simplifyInterval} 个 session 运行代码审查...`);
+        const { runSimplifySession } = require('./session');
+        await runSimplifySession(config.simplifyCommits || 3);
+
+        // 检查是否有代码变更
+        try {
+          execSync('git diff --quiet HEAD', { cwd: projectRoot, stdio: 'pipe' });
+        } catch {
+          // 有变更，自动提交
+          execSync('git add -A && git commit -m "style: simplify optimization"', { cwd: projectRoot, stdio: 'pipe' });
+          log('ok', '代码优化已提交');
+        }
+      }
+
       tryPush();
       consecutiveFailures = 0;
 
@@ -370,7 +389,7 @@ async function add(instruction, opts = {}) {
   // 询问用户是否在完成后自动运行
   const shouldAutoRun = await promptAutoRun();
 
-  deployTestRule(p);
+  deployGuidanceFiles(p);
 
   await runAddSession(instruction, { projectRoot, ...opts });
   printStats();
@@ -383,14 +402,36 @@ async function add(instruction, opts = {}) {
   }
 }
 
-function deployTestRule(p) {
-  const dest = path.join(p.loopDir, 'test_rule.md');
-  if (fs.existsSync(dest)) return;
-  if (!fs.existsSync(p.testRuleTemplate)) return;
+function deployFile(src, dest, logMsg) {
+  if (fs.existsSync(dest)) return false;
+  if (!fs.existsSync(src)) return false;
   try {
-    fs.copyFileSync(p.testRuleTemplate, dest);
-    log('ok', '已部署测试指导规则 → .claude-coder/test_rule.md');
+    fs.copyFileSync(src, dest);
+    if (logMsg) log('ok', logMsg);
+    return true;
   } catch { /* ignore */ }
+  return false;
+}
+
+function deployGuidanceFiles(p) {
+  // Ensure assets directory exists
+  if (!fs.existsSync(p.assetsDir)) {
+    fs.mkdirSync(p.assetsDir, { recursive: true });
+  }
+
+  // Deploy all guidance files
+  deployFile(p.guidanceTemplate, p.userGuidanceFile,
+    '已部署指导规则配置 → .claude-coder/guidance.json');
+
+  deployFile(p.testRuleTemplate, p.userTestRule,
+    '已部署测试指导规则 → .claude-coder/assets/test_rule.md');
+
+  const templatesDir = path.dirname(p.guidanceTemplate);
+  deployFile(path.join(templatesDir, 'playwright.md'), path.join(p.assetsDir, 'playwright.md'),
+    '已部署 Playwright 指导 → .claude-coder/assets/playwright.md');
+
+  deployFile(path.join(templatesDir, 'bash-process.md'), path.join(p.assetsDir, 'bash-process.md'),
+    '已部署进程管理指导 → .claude-coder/assets/bash-process.md');
 }
 
 module.exports = { run, add };

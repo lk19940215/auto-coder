@@ -213,9 +213,10 @@ function buildAddSystemPrompt() {
 
 /**
  * Build user prompt for add sessions.
- * Structure: Role (primacy) → Dynamic context → ADD_GUIDE.md (reference) → Instruction (recency)
+ * Structure: Role (primacy) → Dynamic context → ADD_GUIDE.md (reference) → Plan path (recency)
+ * @param {string} planPath - Path to the generated plan file
  */
-function buildAddPrompt(instruction) {
+function buildAddPrompt(planPath) {
   const p = paths();
   const projectRoot = getProjectRoot();
 
@@ -264,11 +265,11 @@ function buildAddPrompt(instruction) {
 
   // --- Conditional: Playwright test rule hint ---
   let testRuleHint = '';
-  const testRulePath = path.join(p.loopDir, 'test_rule.md');
+  const testRulePath = p.userTestRule;
   const hasMcp = fs.existsSync(p.mcpConfig);
   if (fs.existsSync(testRulePath) && hasMcp) {
     testRuleHint = '【Playwright 测试规则】项目已配置 Playwright MCP（.mcp.json），' +
-      '`.claude-coder/test_rule.md` 包含测试规范（Smart Snapshot、等待策略、步骤模板等）。端到端测试任务请参考 test_rule.md。';
+      '`.claude-coder/assets/test_rule.md` 包含测试规范（Smart Snapshot、等待策略、步骤模板等）。端到端测试任务请参考 test_rule.md。';
   }
 
   return loadAndRender(p.addUser, {
@@ -278,7 +279,7 @@ function buildAddPrompt(instruction) {
     projectRoot,
     addGuide,
     testRuleHint,
-    instruction,
+    planPath,
   });
 }
 

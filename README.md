@@ -132,8 +132,9 @@ your-project/
   ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3-coder-next
   ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3-coder-plus
   ANTHROPIC_SMALL_FAST_MODEL=MiniMax-M2.5
-  ANTHROPIC_MODEL=kimi-k2.5
+  ANTHROPIC_MODEL=kimi-k2.5 // ANTHROPIC_MODEL=qwen3-max-2026-01-23
   ```
+
 ### 自用 Claude Code（最强）
 特点：
 - reasoning 最强
