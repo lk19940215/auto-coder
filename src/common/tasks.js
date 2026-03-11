@@ -2,31 +2,23 @@
 
 const fs = require('fs');
 const { paths, log, COLOR } = require('../common/config');
+const { readJson, writeJson } = require('../common/utils');
+const { TASK_STATUSES, STATUS_TRANSITIONS } = require('../common/constants');
 
-const VALID_STATUSES = ['pending', 'in_progress', 'testing', 'done', 'failed'];
-
-const TRANSITIONS = {
-  pending:     ['in_progress'],
-  in_progress: ['testing'],
-  testing:     ['done', 'failed'],
-  failed:      ['in_progress'],
-  done:        [],
-};
+// 暴露常量供外部使用
+const VALID_STATUSES = TASK_STATUSES;
+const TRANSITIONS = STATUS_TRANSITIONS;
 
 function loadTasks() {
   const p = paths();
-  if (!fs.existsSync(p.tasksFile)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(p.tasksFile, 'utf8'));
-  } catch (err) {
-    log('error', `tasks.json 解析失败: ${err.message}`);
-    return null;
-  }
+  const data = readJson(p.tasksFile, null);
+  if (data === null) return null;
+  return data;
 }
 
 function saveTasks(data) {
   const p = paths();
-  fs.writeFileSync(p.tasksFile, JSON.stringify(data, null, 2) + '\n', 'utf8');
+  writeJson(p.tasksFile, data);
 }
 
 function getFeatures(data) {

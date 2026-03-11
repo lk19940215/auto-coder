@@ -1,52 +1,9 @@
 'use strict';
 
 const { COLOR } = require('./config');
+const { truncateMiddle, truncatePath } = require('./utils');
 
 const SPINNERS = ['⠋', '⠙', '⠸', '⠴', '⠦', '⠇'];
-
-/**
- * 中间截断字符串，保留首尾
- */
-function truncateMiddle(str, maxLen) {
-  if (str.length <= maxLen) return str;
-  const startLen = Math.ceil((maxLen - 1) / 2);
-  const endLen = Math.floor((maxLen - 1) / 2);
-  return str.slice(0, startLen) + '…' + str.slice(-endLen);
-}
-
-/**
- * 路径感知截断：优先保留文件名，截断目录中间
- */
-function truncatePath(path, maxLen) {
-  if (path.length <= maxLen) return path;
-
-  const lastSlash = path.lastIndexOf('/');
-  if (lastSlash === -1) {
-    // 无路径分隔符，普通中间截断
-    return truncateMiddle(path, maxLen);
-  }
-
-  const fileName = path.slice(lastSlash + 1);
-  const dirPath = path.slice(0, lastSlash);
-
-  // 文件名本身超长，截断文件名
-  if (fileName.length >= maxLen - 2) {
-    return truncateMiddle(path, maxLen);
-  }
-
-  // 保留文件名，截断目录
-  const availableForDir = maxLen - fileName.length - 2; // -2 for '…/'
-  if (availableForDir <= 0) {
-    return '…/' + fileName.slice(0, maxLen - 2);
-  }
-
-  // 目录两端保留
-  const dirStart = Math.ceil(availableForDir / 2);
-  const dirEnd = Math.floor(availableForDir / 2);
-  const truncatedDir = dirPath.slice(0, dirStart) + '…' + (dirEnd > 0 ? dirPath.slice(-dirEnd) : '');
-
-  return truncatedDir + '/' + fileName;
-}
 
 class Indicator {
   constructor() {

@@ -1,17 +1,15 @@
 'use strict';
 
 const fs = require('fs');
+const path = require('path');
 const net = require('net');
 const http = require('http');
 const { spawn, execSync } = require('child_process');
 const { paths, log, getProjectRoot } = require('../common/config');
+const { scan } = require('./scan');
 
 function loadProfile() {
   const p = paths();
-  if (!fs.existsSync(p.profile)) {
-    log('error', '未找到 project_profile.json，请先运行 claude-coder run 完成项目扫描');
-    process.exit(1);
-  }
   return JSON.parse(fs.readFileSync(p.profile, 'utf8'));
 }
 
@@ -48,10 +46,61 @@ function runCmd(cmd, cwd) {
   }
 }
 
+/**
+ * 部署单个文件
+ */
+function deployFile(src, dest, logMsg) {
+  if (fs.existsSync(dest)) return false;
+  if (!fs.existsSync(src)) return false;
+  try {
+    fs.copyFileSync(src, dest);
+    if (logMsg) log('ok', logMsg);
+    return true;
+  } catch { /* ignore */ }
+  return false;
+}
+
+/**
+ * 部署指导文件
+ */
+function deployGuidanceFiles(p) {
+  if (!fs.existsSync(p.assetsDir)) {
+    fs.mkdirSync(p.assetsDir, { recursive: true });
+  }
+
+  deployFile(p.guidanceTemplate, p.userGuidanceFile,
+    '已部署指导规则配置 → .claude-coder/guidance.json');
+
+  deployFile(p.testRuleTemplate, p.userTestRule,
+    '已部署测试指导规则 → .claude-coder/assets/test_rule.md');
+
+  const templatesDir = path.dirname(p.guidanceTemplate);
+  deployFile(path.join(templatesDir, 'playwright.md'), path.join(p.assetsDir, 'playwright.md'),
+    '已部署 Playwright 指导 → .claude-coder/assets/playwright.md');
+
+  deployFile(path.join(templatesDir, 'bash-process.md'), path.join(p.assetsDir, 'bash-process.md'),
+    '已部署进程管理指导 → .claude-coder/assets/bash-process.md');
+}
+
 async function init() {
-  const profile = loadProfile();
+  const p = paths();
   const projectRoot = getProjectRoot();
+
+  // 如果 profile 不存在，先执行扫描
+  if (!fs.existsSync(p.profile)) {
+    log('info', 'profile 不存在，正在执行项目扫描...');
+    const scanResult = await scan('', { projectRoot });
+    if (!scanResult.success) {
+      log('error', '项目扫描失败');
+      process.exit(1);
+    }
+  }
+
+  const profile = loadProfile();
   let stepCount = 0;
+
+  // 0. 部署指导文件
+  deployGuidanceFiles(p);
 
   // 1. Environment activation
   const envSetup = profile.env_setup || {};

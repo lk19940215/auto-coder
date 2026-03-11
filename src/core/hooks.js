@@ -4,13 +4,14 @@ const fs = require('fs');
 const path = require('path');
 const { inferPhaseStep } = require('../common/indicator');
 const { log, paths } = require('../common/config');
+const { EDIT_THRESHOLD, FILES } = require('../common/constants');
 
 // ─────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────
 
-const DEFAULT_EDIT_THRESHOLD = 15;
-const SESSION_RESULT_FILENAME = 'session_result.json';
+const DEFAULT_EDIT_THRESHOLD = EDIT_THRESHOLD;
+const SESSION_RESULT_FILENAME = FILES.SESSION_RESULT;
 
 // Feature name constants
 const FEATURES = Object.freeze({

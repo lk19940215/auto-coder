@@ -3,7 +3,9 @@
 const fs = require('fs');
 const { execSync } = require('child_process');
 const { paths, log, getProjectRoot } = require('../common/config');
-const { loadTasks, getFeatures } = require('../modules/tasks');
+const { readJson } = require('../common/utils');
+const { TASK_STATUSES } = require('../common/constants');
+const { loadTasks, getFeatures } = require('../common/tasks');
 
 function tryExtractFromBroken(text) {
   const result = {};
@@ -43,50 +45,45 @@ function validateSessionResult() {
     return { valid: false, fatal: true, recoverable: false, reason: 'session_result.json 不存在' };
   }
 
-  const raw = fs.readFileSync(p.sessionResult, 'utf8');
-  let data;
-  try {
-    data = JSON.parse(raw);
-  } catch (err) {
-    log('warn', `session_result.json 解析失败: ${err.message}`);
+  const data = readJson(p.sessionResult, null);
+  if (data === null) {
+    log('warn', 'session_result.json 解析失败');
+    const raw = fs.readFileSync(p.sessionResult, 'utf8');
     const extracted = tryExtractFromBroken(raw);
     if (extracted) {
       log('info', `从截断 JSON 中提取到关键字段: ${JSON.stringify(extracted)}`);
       return { valid: false, fatal: false, recoverable: true, reason: 'JSON 截断但提取到关键字段', data: extracted };
     }
-    return { valid: false, fatal: false, recoverable: true, reason: `JSON 解析失败: ${err.message}` };
+    return { valid: false, fatal: false, recoverable: true, reason: 'JSON 解析失败' };
   }
 
   // Backward compat: unwrap legacy { current: {...} } format
-  if (data.current && typeof data.current === 'object') {
-    data = data.current;
-  }
+  const sessionData = data.current && typeof data.current === 'object' ? data.current : data;
 
   const required = ['session_result', 'status_after'];
-  const missing = required.filter(k => !(k in data));
+  const missing = required.filter(k => !(k in sessionData));
   if (missing.length > 0) {
     log('warn', `session_result.json 缺少字段: ${missing.join(', ')}`);
     return { valid: false, fatal: false, recoverable: true, reason: `缺少字段: ${missing.join(', ')}` };
   }
 
-  if (!['success', 'failed'].includes(data.session_result)) {
-    log('warn', `session_result 必须是 success 或 failed，实际是: ${data.session_result}`);
-    return { valid: false, fatal: false, recoverable: true, reason: `无效 session_result: ${data.session_result}`, data };
+  if (!['success', 'failed'].includes(sessionData.session_result)) {
+    log('warn', `session_result 必须是 success 或 failed，实际是: ${sessionData.session_result}`);
+    return { valid: false, fatal: false, recoverable: true, reason: `无效 session_result: ${sessionData.session_result}`, data: sessionData };
   }
 
-  const validStatuses = ['pending', 'in_progress', 'testing', 'done', 'failed'];
-  if (!validStatuses.includes(data.status_after)) {
-    log('warn', `status_after 不合法: ${data.status_after}`);
-    return { valid: false, fatal: false, recoverable: true, reason: `无效 status_after: ${data.status_after}`, data };
+  if (!TASK_STATUSES.includes(sessionData.status_after)) {
+    log('warn', `status_after 不合法: ${sessionData.status_after}`);
+    return { valid: false, fatal: false, recoverable: true, reason: `无效 status_after: ${sessionData.status_after}`, data: sessionData };
   }
 
-  if (data.session_result === 'success') {
+  if (sessionData.session_result === 'success') {
     log('ok', 'session_result.json 合法 (success)');
   } else {
     log('warn', 'session_result.json 合法，但 Agent 报告失败 (failed)');
   }
 
-  return { valid: true, fatal: false, recoverable: false, data };
+  return { valid: true, fatal: false, recoverable: false, data: sessionData };
 }
 
 function checkGitProgress(headBefore) {

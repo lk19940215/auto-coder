@@ -1,0 +1,152 @@
+'use strict';
+
+const fs = require('fs');
+const { execSync } = require('child_process');
+
+// ─────────────────────────────────────────────────────────────
+// JSON 文件操作
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 读取 JSON 文件，失败返回默认值
+ * @param {string} filepath - 文件路径
+ * @param {*} defaultValue - 默认值
+ * @returns {*} 解析后的 JSON 或默认值
+ */
+function readJson(filepath, defaultValue = null) {
+  try {
+    return JSON.parse(fs.readFileSync(filepath, 'utf8'));
+  } catch {
+    return defaultValue;
+  }
+}
+
+/**
+ * 写入 JSON 文件（格式化）
+ * @param {string} filepath - 文件路径
+ * @param {*} data - 数据
+ */
+function writeJson(filepath, data) {
+  fs.writeFileSync(filepath, JSON.stringify(data, null, 2) + '\n', 'utf8');
+}
+
+/**
+ * 检查文件是否存在
+ * @param {string} filepath - 文件路径
+ * @returns {boolean}
+ */
+function fileExists(filepath) {
+  return fs.existsSync(filepath);
+}
+
+// ─────────────────────────────────────────────────────────────
+// 字符串工具
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 中间截断字符串，保留首尾
+ * @param {string} str - 原字符串
+ * @param {number} maxLen - 最大长度
+ * @returns {string}
+ */
+function truncateMiddle(str, maxLen) {
+  if (!str || str.length <= maxLen) return str || '';
+  const startLen = Math.ceil((maxLen - 1) / 2);
+  const endLen = Math.floor((maxLen - 1) / 2);
+  return str.slice(0, startLen) + '…' + str.slice(-endLen);
+}
+
+/**
+ * 路径感知截断：优先保留文件名，截断目录中间
+ * @param {string} path - 文件路径
+ * @param {number} maxLen - 最大长度
+ * @returns {string}
+ */
+function truncatePath(path, maxLen) {
+  if (!path || path.length <= maxLen) return path || '';
+
+  const lastSlash = path.lastIndexOf('/');
+  if (lastSlash === -1) {
+    return truncateMiddle(path, maxLen);
+  }
+
+  const fileName = path.slice(lastSlash + 1);
+  const dirPath = path.slice(0, lastSlash);
+
+  // 文件名本身超长，截断文件名
+  if (fileName.length >= maxLen - 2) {
+    return truncateMiddle(path, maxLen);
+  }
+
+  // 保留文件名，截断目录
+  const availableForDir = maxLen - fileName.length - 2; // -2 for '…/'
+  if (availableForDir <= 0) {
+    return '…/' + fileName.slice(0, maxLen - 2);
+  }
+
+  // 目录两端保留
+  const dirStart = Math.ceil(availableForDir / 2);
+  const dirEnd = Math.floor(availableForDir / 2);
+  const truncatedDir = dirPath.slice(0, dirStart) + '…' + (dirEnd > 0 ? dirPath.slice(-dirEnd) : '');
+
+  return truncatedDir + '/' + fileName;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Git 工具
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 获取当前 git HEAD commit hash
+ * @param {string} cwd - 工作目录
+ * @returns {string} commit hash 或 'none'
+ */
+function getGitHead(cwd) {
+  try {
+    return execSync('git rev-parse HEAD', { cwd, encoding: 'utf8' }).trim();
+  } catch {
+    return 'none';
+  }
+}
+
+/**
+ * 检查是否在 git 仓库中
+ * @param {string} cwd - 工作目录
+ * @returns {boolean}
+ */
+function isGitRepo(cwd) {
+  try {
+    execSync('git rev-parse --is-inside-work-tree', { cwd, stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 进程工具
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 休眠
+ * @param {number} ms - 毫秒
+ * @returns {Promise<void>}
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+module.exports = {
+  // JSON 操作
+  readJson,
+  writeJson,
+  fileExists,
+  // 字符串工具
+  truncateMiddle,
+  truncatePath,
+  // Git 工具
+  getGitHead,
+  isGitRepo,
+  // 进程工具
+  sleep,
+};

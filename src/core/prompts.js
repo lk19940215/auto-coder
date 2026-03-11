@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const { paths, loadConfig, getProjectRoot } = require('../common/config');
-const { loadTasks, findNextTask, getStats } = require('./tasks');
+const { loadTasks, findNextTask, getStats } = require('../common/tasks');
 
 // --------------- Template Engine ---------------
 
@@ -200,22 +200,22 @@ function buildScanPrompt(projectType, requirement) {
   });
 }
 
-// --------------- Add Session ---------------
+// --------------- Plan Session ---------------
 
 /**
- * Build lightweight system prompt for add sessions.
+ * Build lightweight system prompt for plan sessions.
  * CLAUDE.md is NOT injected to avoid role conflict and save ~2000 tokens.
  */
-function buildAddSystemPrompt() {
+function buildPlanSystemPrompt() {
   return '你是一个任务分解专家，擅长将模糊需求拆解为结构化、可执行的原子任务。你只分析需求和分解任务，不实现任何代码。';
 }
 
 /**
- * Build user prompt for add sessions.
+ * Build user prompt for plan sessions.
  * Structure: Role (primacy) → Dynamic context → ADD_GUIDE.md (reference) → Plan path (recency)
  * @param {string} planPath - Path to the generated plan file
  */
-function buildAddPrompt(planPath) {
+function buildPlanPrompt(planPath) {
   const p = paths();
   const projectRoot = getProjectRoot();
 
@@ -290,6 +290,6 @@ module.exports = {
   buildSystemPrompt,
   buildCodingPrompt,
   buildScanPrompt,
-  buildAddSystemPrompt,
-  buildAddPrompt,
+  buildPlanSystemPrompt,
+  buildPlanPrompt,
 };

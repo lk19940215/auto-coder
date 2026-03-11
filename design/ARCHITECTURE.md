@@ -184,6 +184,9 @@ claude-coder/
 │   ├── index.js                  # 模块导出入口（预留，暂无实际用途）
 │   ├── common/                   # 共享基础设施
 │   │   ├── config.js             # .env 加载、模型映射、环境变量构建
+│   │   ├── constants.js          # 常量集中管理（状态、超时、文件名）
+│   │   ├── utils.js              # 公共工具（JSON 读写、Git、休眠）
+│   │   ├── logging.js            # 日志工具（SDK 消息处理）
 │   │   └── indicator.js          # 终端进度指示器
 │   ├── core/                     # 核心运行时
 │   │   ├── runner.js             # Harness 主循环：scan → session → validate → retry/rollback
@@ -218,6 +221,9 @@ claude-coder/
 |------|------|
 | `bin/cli.js` | CLI 入口，解析命令行参数，路由到对应模块 |
 | `src/common/config.js` | .env 文件解析、模型配置加载、环境变量构建 |
+| `src/common/constants.js` | 常量集中管理：任务状态、状态迁移规则、超时默认值、文件名 |
+| `src/common/utils.js` | 公共工具：JSON 文件读写、Git 操作、休眠函数 |
+| `src/common/logging.js` | 日志工具：SDK 消息处理、结果提取、Session 分隔符 |
 | `src/common/indicator.js` | 终端进度显示：spinner + 工具目标 + 停顿警告 |
 | `src/core/runner.js` | Harness 主循环：scan → session → validate → retry/rollback |
 | `src/core/session.js` | SDK query() 封装，支持多种 session 类型（coding/scan/add/simplify） |

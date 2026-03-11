@@ -1,0 +1,107 @@
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const readline = require('readline');
+const { paths, log, COLOR, getProjectRoot, parseEnvFile, updateEnvVar } = require('../../common/config');
+
+// ── readline helpers ──
+
+function createInterface() {
+  return readline.createInterface({ input: process.stdin, output: process.stdout });
+}
+
+function ask(rl, question) {
+  return new Promise(resolve => rl.question(question, resolve));
+}
+
+async function askChoice(rl, prompt, min, max, defaultVal) {
+  while (true) {
+    const raw = await ask(rl, prompt);
+    const val = raw.trim() || String(defaultVal || '');
+    const num = parseInt(val, 10);
+    if (num >= min && num <= max) return num;
+    console.log(`请输入 ${min}-${max}`);
+  }
+}
+
+async function askApiKey(rl, platform, apiUrl, existingKey) {
+  if (existingKey) {
+    console.log('保留当前 API Key 请直接回车，或输入新 Key:');
+  } else {
+    console.log(`请输入 ${platform} 的 API Key:`);
+  }
+  if (apiUrl) {
+    console.log(`  ${COLOR.blue}获取入口: ${apiUrl}${COLOR.reset}`);
+    console.log('');
+  }
+  const key = await ask(rl, '  API Key: ');
+  if (!key.trim()) {
+    if (existingKey) return existingKey;
+    console.error('API Key 不能为空');
+    process.exit(1);
+  }
+  return key.trim();
+}
+
+// ── config file helpers ──
+
+function writeConfig(filePath, lines) {
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  if (fs.existsSync(filePath)) {
+    const ts = new Date().toISOString().replace(/[:\-T]/g, '').slice(0, 14);
+    const backup = `${filePath}.bak.${ts}`;
+    fs.copyFileSync(filePath, backup);
+    log('info', `已备份旧配置到: ${backup}`);
+  }
+
+  fs.writeFileSync(filePath, lines.join('\n') + '\n', 'utf8');
+}
+
+function ensureGitignore() {
+  const path = require('path');
+  const gitignore = path.join(getProjectRoot(), '.gitignore');
+  const patterns = ['.claude-coder/.env', '.claude-coder/.runtime/'];
+  let content = '';
+  if (fs.existsSync(gitignore)) {
+    content = fs.readFileSync(gitignore, 'utf8');
+  }
+  const toAdd = patterns.filter(p => !content.includes(p));
+  if (toAdd.length > 0) {
+    const block = '\n# Claude Coder（含 API Key 和临时文件）\n' + toAdd.join('\n') + '\n';
+    fs.appendFileSync(gitignore, block, 'utf8');
+    log('info', '已将 .claude-coder/.env 添加到 .gitignore');
+  }
+}
+
+// ── show current config ──
+
+function showCurrentConfig(existing) {
+  console.log('');
+  console.log(`${COLOR.blue}当前配置:${COLOR.reset}`);
+  console.log(`  提供商:     ${existing.MODEL_PROVIDER || '未配置'}`);
+  console.log(`  BASE_URL:   ${existing.ANTHROPIC_BASE_URL || '默认'}`);
+  console.log(`  模型:       ${existing.ANTHROPIC_MODEL || '默认'}`);
+  console.log(`  MCP:        ${existing.MCP_PLAYWRIGHT === 'true' ? `已启用 (${existing.MCP_PLAYWRIGHT_MODE || 'persistent'})` : '未启用'}`);
+  const compTimeout = existing.SESSION_COMPLETION_TIMEOUT || '300';
+  const turns = existing.SESSION_MAX_TURNS || '0';
+  console.log(`  停顿超时:   ${existing.SESSION_STALL_TIMEOUT || '1200'} 秒`);
+  console.log(`  完成检测:   ${compTimeout} 秒`);
+  console.log(`  工具轮次:   ${turns === '0' ? '无限制' : turns}`);
+  const simplifyInterval = existing.SIMPLIFY_INTERVAL || '0';
+  const simplifyCommits = existing.SIMPLIFY_COMMITS || '3';
+  console.log(`  自动审查:   ${simplifyInterval === '0' ? '禁用' : `每 ${simplifyInterval} 个 session`}${simplifyInterval !== '0' ? `，审查 ${simplifyCommits} 个 commit` : ''}`);
+  console.log('');
+}
+
+module.exports = {
+  createInterface,
+  ask,
+  askChoice,
+  askApiKey,
+  writeConfig,
+  ensureGitignore,
+  showCurrentConfig,
+};

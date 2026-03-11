@@ -4,15 +4,13 @@
 const pkg = require('../package.json');
 
 const COMMANDS = {
-  run:      { desc: '自动编码循环',             usage: 'claude-coder run [--max N] [--pause N] [--dry-run]' },
-  setup:    { desc: '交互式模型配置',           usage: 'claude-coder setup' },
-  init:     { desc: '初始化项目环境',           usage: 'claude-coder init' },
-  add:      { desc: '追加任务并可选自动执行',   usage: 'claude-coder add "指令" [--model M] | add -r [file]' },
-  plan:     { desc: '生成计划方案文档',         usage: 'claude-coder plan "需求" | plan -r requirements.md' },
-  simplify: { desc: '代码审查和简化',           usage: 'claude-coder simplify [focus]' },
-  auth:     { desc: '导出 Playwright 登录状态', usage: 'claude-coder auth [url]' },
-  validate: { desc: '手动校验上次 session',     usage: 'claude-coder validate' },
-  status:   { desc: '查看任务进度和成本',       usage: 'claude-coder status' },
+  run:       { desc: '自动编码循环',             usage: 'claude-coder run [--max N] [--pause N] [--dry-run]' },
+  setup:     { desc: '交互式模型配置',           usage: 'claude-coder setup' },
+  init:      { desc: '初始化项目环境',           usage: 'claude-coder init' },
+  plan:      { desc: '生成计划方案',             usage: 'claude-coder plan "需求" | plan -r requirements.md [--planOnly]' },
+  simplify:  { desc: '代码审查和简化',           usage: 'claude-coder simplify [focus]' },
+  auth:      { desc: '导出 Playwright 登录状态', usage: 'claude-coder auth [url]' },
+  status:    { desc: '查看任务进度和成本',       usage: 'claude-coder status' },
 };
 
 function showHelp() {
@@ -24,17 +22,17 @@ function showHelp() {
   }
   console.log('\n示例:');
   console.log('  claude-coder setup                   配置模型和 API Key');
-  console.log('  claude-coder add "实现用户登录"       添加任务（询问是否自动执行）');
+  console.log('  claude-coder plan "实现用户登录"      生成计划方案');
+  console.log('  claude-coder plan -r requirements.md 从文件读取需求');
+  console.log('  claude-coder plan --planOnly         仅生成计划文档');
   console.log('  claude-coder run                     执行所有待处理任务');
   console.log('  claude-coder run --max 1             单次执行');
   console.log('  claude-coder run --max 5 --pause 5   每 5 个 session 暂停确认');
   console.log('  claude-coder run --dry-run            预览模式');
-  console.log('  claude-coder add -r                   从 requirements.md 追加任务');
-  console.log('  claude-coder add "..." --model opus-4 指定模型追加任务');
   console.log('  claude-coder simplify               代码审查和简化');
   console.log('  claude-coder simplify "内存效率"     聚焦特定领域审查');
   console.log('  claude-coder auth                    导出 Playwright 登录状态');
-  console.log('  claude-coder auth http://localhost:8080  指定登录 URL');
+  console.log('  claude-coder auth http://localhost:8080   指定登录 URL'); 
   console.log('  claude-coder status                  查看进度和成本');
   console.log(`\n前置条件: npm install -g @anthropic-ai/claude-agent-sdk`);
 }
@@ -42,7 +40,7 @@ function showHelp() {
 function parseArgs(argv) {
   const args = argv.slice(2);
   const command = args[0];
-  const opts = { max: 50, pause: 0, dryRun: false, readFile: null, model: null, n: 3 };
+  const opts = { max: 50, pause: 0, dryRun: false, readFile: null, model: null, n: 3, planOnly: false };
   const positional = [];
 
   for (let i = 1; i < args.length; i++) {
@@ -73,6 +71,9 @@ function parseArgs(argv) {
         }
         break;
       }
+      case '--planOnly':
+        opts.planOnly = true;
+        break;
       case '--help':
       case '-h':
         showHelp();
@@ -114,29 +115,19 @@ async function main() {
       break;
     }
     case 'init': {
-      const { init } = require('../src/commands/init');
+      const { init } = require('../src/core/init');
       await init();
       break;
     }
-    case 'add': {
-      const fs = require('fs');
-      const nodePath = require('path');
-      let instruction = positional[0] || '';
-      if (opts.readFile) {
-        const reqPath = nodePath.resolve(opts.readFile);
-        if (!fs.existsSync(reqPath)) {
-          console.error(`文件不存在: ${reqPath}`);
-          process.exit(1);
-        }
-        instruction = fs.readFileSync(reqPath, 'utf8');
-        console.log(`已读取需求文件: ${opts.readFile}`);
-      }
-      if (!instruction) {
-        console.error('用法: claude-coder add "任务描述"  或  claude-coder add -r [requirements.md]');
-        process.exit(1);
-      }
-      const runner = require('../src/core/runner');
-      await runner.add(instruction, opts);
+    case 'plan': {
+      const { run: planRun } = require('../src/core/plan');
+      const input = positional[0] || '';
+      await planRun(input, opts);
+      break;
+    }
+    case 'simplify': {
+      const { simplify } = require('../src/core/simplify');
+      await simplify(positional[0] || null, { n: opts.n });
       break;
     }
     case 'auth': {
@@ -144,36 +135,9 @@ async function main() {
       await auth(positional[0] || null);
       break;
     }
-    case 'validate': {
-      const validator = require('../src/commands/validator');
-      const result = await validator.validate();
-      process.exit(result.fatal ? 1 : 0);
-      break;
-    }
     case 'status': {
-      const tasks = require('../src/modules/tasks');
+      const tasks = require('../src/common/tasks');
       tasks.showStatus();
-      break;
-    }
-    case 'simplify': {
-      const { runSimplifySession } = require('../src/core/session');
-      await runSimplifySession(opts.n, opts);
-      break;
-    }
-    case 'plan': {
-      const plan = require('../src/core/plan');
-      const args = [];
-      if (opts.readFile) {
-        args.push('-r', opts.readFile);
-      } else if (positional.length > 0) {
-        args.push(...positional);
-      }
-      if (args.length === 0) {
-        console.error('用法: claude-coder plan "需求内容"  或  claude-coder plan -r [requirements.md]');
-        process.exit(1);
-      }
-      const result = await plan.run(args, opts);
-      process.exit(result.success ? 0 : 1);
       break;
     }
     default:

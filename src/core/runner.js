@@ -1,42 +1,28 @@
 'use strict';
 
 const fs = require('fs');
-const path = require('path');
 const readline = require('readline');
 const { execSync } = require('child_process');
-const { paths, log, COLOR, loadConfig, ensureLoopDir, getProjectRoot } = require('../common/config');
-const { loadTasks, getFeatures, getStats, findNextTask, forceStatus } = require('../modules/tasks');
-const { validate } = require('../commands/validator');
-const { scan } = require('../modules/scanner');
-const { loadSDK, runCodingSession, runAddSession } = require('./session');
+const { paths, log, loadConfig, ensureLoopDir, getProjectRoot } = require('../common/config');
+const { readJson, writeJson, getGitHead, sleep } = require('../common/utils');
+const { RETRY } = require('../common/constants');
+const { loadTasks, getFeatures, getStats, findNextTask, forceStatus } = require('../common/tasks');
+const { validate } = require('./validator');
+const { runCodingSession } = require('./coding');
+const { simplify } = require('./simplify');
+const { loadSDK } = require('../common/sdk');
 
-const MAX_RETRY = 3;
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
+const MAX_RETRY = RETRY.MAX_ATTEMPTS;
 
 function getHead() {
-  try {
-    return execSync('git rev-parse HEAD', { cwd: getProjectRoot(), encoding: 'utf8' }).trim();
-  } catch {
-    return 'none';
-  }
-}
-
-function allTasksDone() {
-  const data = loadTasks();
-  if (!data) return false;
-  const features = getFeatures(data);
-  if (features.length === 0) return true;
-  return features.every(f => f.status === 'done');
+  return getGitHead(getProjectRoot());
 }
 
 function killServicesByProfile() {
   const p = paths();
-  if (!fs.existsSync(p.profile)) return;
+  const profile = readJson(p.profile, null);
+  if (!profile) return;
   try {
-    const profile = JSON.parse(fs.readFileSync(p.profile, 'utf8'));
     const services = profile.services || [];
     const ports = services.map(s => s.port).filter(Boolean);
     if (ports.length === 0) return;
@@ -118,16 +104,10 @@ function tryPush() {
 
 function appendProgress(entry) {
   const p = paths();
-  let progress = { sessions: [] };
-  if (fs.existsSync(p.progressFile)) {
-    try {
-      const text = fs.readFileSync(p.progressFile, 'utf8');
-      progress = JSON.parse(text);
-    } catch { /* reset */ }
-  }
+  let progress = readJson(p.progressFile, { sessions: [] });
   if (!Array.isArray(progress.sessions)) progress.sessions = [];
   progress.sessions.push(entry);
-  fs.writeFileSync(p.progressFile, JSON.stringify(progress, null, 2) + '\n', 'utf8');
+  writeJson(p.progressFile, progress);
 }
 
 function printStats() {
@@ -210,17 +190,19 @@ async function run(opts = {}) {
       break;
     }
 
-    if (allTasksDone()) {
+    const features = getFeatures(taskData);
+    if (features.length > 0 && features.every(f => f.status === 'done')) {
       console.log('');
       log('ok', '所有任务已完成！');
       printStats();
       break;
     }
 
-    printStats();
+    const stats = getStats(taskData);
+    log('info', `进度: ${stats.done}/${stats.total} done, ${stats.in_progress} in_progress, ${stats.testing} testing, ${stats.failed} failed, ${stats.pending} pending`);
 
     if (dryRun) {
-      const next = findNextTask(loadTasks());
+      const next = findNextTask(taskData);
       log('info', `[DRY-RUN] 下一个任务: ${next ? `${next.id} - ${next.description}` : '无'}`);
       if (!next) break;
       continue;
@@ -272,8 +254,7 @@ async function run(opts = {}) {
       const simplifyInterval = config.simplifyInterval || 0;
       if (simplifyInterval > 0 && session % simplifyInterval === 0) {
         log('info', `每 ${simplifyInterval} 个 session 运行代码审查...`);
-        const { runSimplifySession } = require('./session');
-        await runSimplifySession(config.simplifyCommits || 3);
+        await simplify(config.simplifyCommits || 3);
 
         // 检查是否有代码变更
         try {
@@ -342,96 +323,4 @@ async function run(opts = {}) {
   printStats();
 }
 
-async function promptAutoRun() {
-  if (!process.stdin.isTTY) return false;
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise(resolve => {
-    rl.question('任务分解完成后是否自动开始执行？(y/n) ', answer => {
-      rl.close();
-      resolve(/^[Yy]/.test(answer.trim()));
-    });
-  });
-}
-
-async function add(instruction, opts = {}) {
-  await loadSDK();
-  const p = paths();
-  const projectRoot = getProjectRoot();
-  ensureLoopDir();
-
-  const config = loadConfig();
-
-  if (!opts.model) {
-    if (config.defaultOpus) {
-      opts.model = config.defaultOpus;
-    } else if (config.model) {
-      opts.model = config.model;
-    }
-  }
-
-  const displayModel = opts.model || config.model || '(default)';
-  log('ok', `模型配置已加载: ${config.provider || 'claude'} (add 使用: ${displayModel})`);
-
-  // 如果 profile 不存在，先执行项目扫描
-  if (!fs.existsSync(p.profile)) {
-    log('info', '首次使用，正在执行项目扫描...');
-    const scanResult = await scan(instruction, { projectRoot });
-    if (!scanResult.success) {
-      console.log('');
-      console.log(`${COLOR.yellow}═══════════════════════════════════════════════${COLOR.reset}`);
-      console.log(`${COLOR.yellow}  若出现 "Credit balance is too low"，请运行:${COLOR.reset}`);
-      console.log(`  ${COLOR.green}claude-coder setup${COLOR.reset}`);
-      console.log(`${COLOR.yellow}═══════════════════════════════════════════════${COLOR.reset}`);
-      process.exit(1);
-    }
-  }
-
-  // 询问用户是否在完成后自动运行
-  const shouldAutoRun = await promptAutoRun();
-
-  deployGuidanceFiles(p);
-
-  await runAddSession(instruction, { projectRoot, ...opts });
-  printStats();
-
-  // 如果用户选择自动运行，则调用 run()
-  if (shouldAutoRun) {
-    console.log('');
-    log('info', '开始自动执行任务...');
-    await run(opts);
-  }
-}
-
-function deployFile(src, dest, logMsg) {
-  if (fs.existsSync(dest)) return false;
-  if (!fs.existsSync(src)) return false;
-  try {
-    fs.copyFileSync(src, dest);
-    if (logMsg) log('ok', logMsg);
-    return true;
-  } catch { /* ignore */ }
-  return false;
-}
-
-function deployGuidanceFiles(p) {
-  // Ensure assets directory exists
-  if (!fs.existsSync(p.assetsDir)) {
-    fs.mkdirSync(p.assetsDir, { recursive: true });
-  }
-
-  // Deploy all guidance files
-  deployFile(p.guidanceTemplate, p.userGuidanceFile,
-    '已部署指导规则配置 → .claude-coder/guidance.json');
-
-  deployFile(p.testRuleTemplate, p.userTestRule,
-    '已部署测试指导规则 → .claude-coder/assets/test_rule.md');
-
-  const templatesDir = path.dirname(p.guidanceTemplate);
-  deployFile(path.join(templatesDir, 'playwright.md'), path.join(p.assetsDir, 'playwright.md'),
-    '已部署 Playwright 指导 → .claude-coder/assets/playwright.md');
-
-  deployFile(path.join(templatesDir, 'bash-process.md'), path.join(p.assetsDir, 'bash-process.md'),
-    '已部署进程管理指导 → .claude-coder/assets/bash-process.md');
-}
-
-module.exports = { run, add };
+module.exports = { run };

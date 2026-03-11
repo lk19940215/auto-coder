@@ -3,53 +3,23 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { loadSDK } = require('./session');
-const { paths, log } = require('../common/config');
-const { Indicator } = require('../common/indicator');
+const readline = require('readline');
+const { runSession } = require('./base');
+const { buildQueryOptions } = require('./utils');
+const { buildPlanSystemPrompt, buildPlanPrompt } = require('./prompts');
+const { paths, log, COLOR, loadConfig, getProjectRoot, ensureLoopDir } = require('../common/config');
+const { extractResultText } = require('../common/logging');
+const { scan } = require('./scan');
+const { loadTasks, getStats } = require('../common/tasks');
 
 const EXIT_TIMEOUT_MS = 30000;
 
-/**
- * 解析输入参数
- * 支持: plan "需求内容" 或 plan -r requirements.md
- */
-function parseInput(args) {
-  if (!args || args.length === 0) {
-    return { type: 'help' };
-  }
-
-  if (args[0] === '-r' || args[0] === '--read') {
-    if (!args[1]) {
-      throw new Error('请指定要读取的文件路径');
-    }
-    return { type: 'file', path: args[1] };
-  }
-
-  return { type: 'instruction', content: args.join(' ') };
-}
-
-/**
- * 获取用户输入内容
- */
-function getUserInput(input) {
-  if (input.type === 'instruction') {
-    return input.content;
-  }
-
-  if (input.type === 'file') {
-    if (!fs.existsSync(input.path)) {
-      throw new Error(`文件不存在: ${input.path}`);
-    }
-    return fs.readFileSync(input.path, 'utf8');
-  }
-
-  return '';
-}
+// --------------- Plan Only 模式工具函数 ---------------
 
 /**
  * 构建计划生成提示语
  */
-function buildPlanPrompt(userInput) {
+function buildPlanOnlyPrompt(userInput) {
   return `${userInput}
 【约束】不要提问，默认使用最佳推荐方案。
 【重要】在最后输出中，必须包含实际方案文件的写入路径，格式如下：
@@ -84,49 +54,10 @@ function copyPlanToProject(generatedPath) {
 }
 
 /**
- * 从消息中提取结果文本
+ * 执行计划生成（共享 ctx）
  */
-function extractResultText(messages) {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].type === 'result') {
-      return messages[i].result || '';
-    }
-  }
-  return '';
-}
-
-/**
- * 日志消息处理
- */
-function logMessage(message, logStream, indicator) {
-  if (message.type === 'assistant' && message.message?.content) {
-    for (const block of message.message.content) {
-      if (block.type === 'text' && block.text) {
-        if (indicator) indicator.updateActivity();
-        if (logStream) logStream.write(block.text);
-      }
-      if (block.type === 'tool_use' && logStream) {
-        logStream.write(`[TOOL_USE] ${block.name}: ${JSON.stringify(block.input).slice(0, 300)}\n`);
-      }
-    }
-  }
-}
-
-/**
- * 运行计划生成 session
- * @param {string} userInput - 用户输入（指令或文件内容）
- * @param {object} opts - 选项 { projectRoot, model, indicator, logStream }
- */
-async function runPlanSession(userInput, opts = {}) {
-  const sdk = await loadSDK();
-  const prompt = buildPlanPrompt(userInput);
-
-  // 外部传入或内部创建
-  const p = paths();
-  const logFile = path.join(p.logsDir, `plan_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.log`);
-  const logStream = opts.logStream || fs.createWriteStream(logFile, { flags: 'a' });
-  const indicator = opts.indicator || new Indicator();
-
+async function _executePlanGen(sdk, ctx, userInput, opts = {}) {
+  const prompt = buildPlanOnlyPrompt(userInput);
   const queryOpts = {
     permissionMode: 'plan',
     disallowedTools: ['askUserQuestion'],
@@ -138,108 +69,200 @@ async function runPlanSession(userInput, opts = {}) {
   let exitPlanModeDetected = false;
   let exitPlanModeTime = null;
 
-  try {
-    const session = sdk.query({ prompt, options: queryOpts });
+  const collected = [];
+  const session = sdk.query({ prompt, options: queryOpts });
 
-    const collected = [];
-    for await (const msg of session) {
-      // 检测 ExitPlanMode 超时
-      if (exitPlanModeDetected && exitPlanModeTime) {
-        const elapsed = Date.now() - exitPlanModeTime;
-        if (elapsed > EXIT_TIMEOUT_MS && msg.type !== 'result') {
-          log('warn', '检测到 ExitPlanMode，等待用户批准超时');
-          log('info', `计划可能已生成，请查看: ${path.join(os.homedir(), '.claude', 'plans')}`);
-          return { success: false, reason: 'timeout', targetPath: null };
-        }
-      }
-
-      collected.push(msg);
-      logMessage(msg, logStream, indicator);
-
-      // 检测 ExitPlanMode
-      if (msg.type === 'assistant' && msg.message?.content) {
-        for (const block of msg.message.content) {
-          if (block.type === 'tool_use' && block.name === 'ExitPlanMode') {
-            exitPlanModeDetected = true;
-            exitPlanModeTime = Date.now();
-          }
-        }
+  for await (const msg of session) {
+    if (exitPlanModeDetected && exitPlanModeTime) {
+      const elapsed = Date.now() - exitPlanModeTime;
+      if (elapsed > EXIT_TIMEOUT_MS && msg.type !== 'result') {
+        log('warn', '检测到 ExitPlanMode，等待用户批准超时');
+        log('info', `计划可能已生成，请查看: ${path.join(os.homedir(), '.claude', 'plans')}`);
+        return { success: false, reason: 'timeout', targetPath: null };
       }
     }
 
-    // 清理（仅内部创建的流）
-    if (!opts.logStream) {
-      logStream.end();
+    collected.push(msg);
+    ctx._logMessage(msg);
+
+    if (msg.type === 'assistant' && msg.message?.content) {
+      for (const block of msg.message.content) {
+        if (block.type === 'tool_use' && block.name === 'ExitPlanMode') {
+          exitPlanModeDetected = true;
+          exitPlanModeTime = Date.now();
+        }
+      }
     }
-
-    // 提取结果
-    const result = extractResultText(collected);
-    const planPath = extractPlanPath(result);
-
-    if (planPath && fs.existsSync(planPath)) {
-      const targetPath = copyPlanToProject(planPath);
-      log('ok', `计划已生成: ${targetPath}`);
-      return { success: true, targetPath, generatedPath: planPath };
-    }
-
-    log('warn', '无法从输出中提取计划路径');
-    return { success: false, reason: 'no_path', targetPath: null };
-
-  } catch (err) {
-    if (!opts.logStream) {
-      logStream.end();
-    }
-    log('error', `计划生成失败: ${err.message}`);
-    return { success: false, reason: 'error', error: err.message, targetPath: null };
   }
+
+  const result = extractResultText(collected);
+  const planPath = extractPlanPath(result);
+
+  if (planPath && fs.existsSync(planPath)) {
+    const targetPath = copyPlanToProject(planPath);
+    log('ok', `计划已生成: ${targetPath}`);
+    return { success: true, targetPath, generatedPath: planPath };
+  }
+
+  log('warn', '无法从输出中提取计划路径');
+  return { success: false, reason: 'no_path', targetPath: null };
+}
+
+// --------------- Session 执行器 ---------------
+
+/**
+ * 运行计划 Session
+ * - planOnly=false: 生成 plan.md + tasks.json
+ * - planOnly=true:  仅生成 plan.md
+ */
+async function runPlanSession(instruction, opts = {}) {
+  const planOnly = opts.planOnly || false;
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const label = planOnly ? 'plan only' : 'plan tasks';
+
+  return runSession('plan', {
+    opts,
+    sessionNum: 0,
+    logFileName: `plan_${dateStr}.log`,
+    label,
+
+    async execute(sdk, ctx) {
+      log('info', '正在生成计划方案...');
+
+      // Phase 1: 生成 plan.md
+      const planResult = await _executePlanGen(sdk, ctx, instruction, opts);
+
+      if (!planResult.success) {
+        log('error', `计划生成失败: ${planResult.reason || planResult.error}`);
+        return { success: false, reason: planResult.reason };
+      }
+
+      log('ok', `计划已生成: ${planResult.targetPath}`);
+
+      // planOnly 模式到此结束
+      if (planOnly) {
+        return { success: true, planPath: planResult.targetPath };
+      }
+
+      // Phase 2: 转换为 tasks.json
+      log('info', '正在生成任务列表...');
+
+      const tasksPrompt = buildPlanPrompt(planResult.targetPath);
+      const queryOpts = buildQueryOptions(ctx.config, opts);
+      queryOpts.systemPrompt = buildPlanSystemPrompt();
+      queryOpts.hooks = ctx.hooks;
+      queryOpts.abortController = ctx.abortController;
+
+      await ctx.runQuery(sdk, tasksPrompt, queryOpts);
+
+      log('ok', '任务追加完成');
+      return { success: true, planPath: planResult.targetPath };
+    },
+  });
+}
+
+// --------------- CLI 辅助函数 ---------------
+
+/**
+ * 询问用户是否自动运行
+ */
+async function promptAutoRun() {
+  if (!process.stdin.isTTY) return false;
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise(resolve => {
+    rl.question('任务分解完成后是否自动开始执行？(y/n) ', answer => {
+      rl.close();
+      resolve(/^[Yy]/.test(answer.trim()));
+    });
+  });
 }
 
 /**
- * 从文件读取用户输入
+ * 显示统计信息
  */
-function readUserInputFile(filePath) {
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`文件不存在: ${filePath}`);
-  }
-  return fs.readFileSync(filePath, 'utf8');
+function printStats() {
+  const data = loadTasks();
+  if (!data) return;
+  const stats = getStats(data);
+  log('info', `进度: ${stats.done}/${stats.total} done, ${stats.in_progress} in_progress, ${stats.testing} testing, ${stats.failed} failed, ${stats.pending} pending`);
 }
+
+// --------------- CLI 入口 ---------------
 
 /**
- * 主入口 - CLI 调用
- * @param {string[]} args - 命令行参数
- * @param {object} opts - 选项 { projectRoot, model }
+ * CLI 入口
  */
-async function run(args, opts = {}) {
-  const input = parseInput(args);
+async function run(input, opts = {}) {
+  let instruction = input || '';
 
-  if (input.type === 'help') {
-    console.log(`
-Usage:
-  claude-coder plan "需求内容"
-  claude-coder plan -r requirements.md
-`);
-    return { success: false, reason: 'help' };
+  // 1. 文件读取 (-r 参数)
+  if (opts.readFile) {
+    const reqPath = path.resolve(opts.readFile);
+    if (!fs.existsSync(reqPath)) {
+      log('error', `文件不存在: ${reqPath}`);
+      process.exit(1);
+    }
+    instruction = fs.readFileSync(reqPath, 'utf8');
+    console.log(`已读取需求文件: ${reqPath}`);
   }
 
-  const userInput = getUserInput(input);
+  // 2. 校验
+  if (!instruction) {
+    log('error', '用法: claude-coder plan "需求内容"  或  claude-coder plan -r [requirements.md]');
+    process.exit(1);
+  }
 
-  // CLI 独立调用时，创建 indicator
-  const indicator = new Indicator();
-  indicator.start(0, 1);
+  // 3. 环境准备
+  const p = paths();
+  const projectRoot = getProjectRoot();
+  ensureLoopDir();
 
-  const result = await runPlanSession(userInput, opts);
+  // 4. 配置加载
+  const config = loadConfig();
+  if (!opts.model) {
+    if (config.defaultOpus) {
+      opts.model = config.defaultOpus;
+    } else if (config.model) {
+      opts.model = config.model;
+    }
+  }
 
-  indicator.stop();
-  return result;
+  const displayModel = opts.model || config.model || '(default)';
+  log('ok', `模型配置已加载: ${config.provider || 'claude'} (plan 使用: ${displayModel})`);
+
+  // 5. 首次使用扫描
+  if (!fs.existsSync(p.profile)) {
+    log('info', '首次使用，正在执行项目扫描...');
+    const scanResult = await scan(instruction, { projectRoot });
+    if (!scanResult.success) {
+      console.log('');
+      console.log(`${COLOR.yellow}═══════════════════════════════════════════════${COLOR.reset}`);
+      console.log(`${COLOR.yellow}  若出现 "Credit balance is too low"，请运行:${COLOR.reset}`);
+      console.log(`  ${COLOR.green}claude-coder setup${COLOR.reset}`);
+      console.log(`${COLOR.yellow}═══════════════════════════════════════════════${COLOR.reset}`);
+      process.exit(1);
+    }
+  }
+
+  // 6. 用户交互（非 planOnly 模式）
+  let shouldAutoRun = false;
+  if (!opts.planOnly) {
+    shouldAutoRun = await promptAutoRun();
+  }
+
+  // 7. 执行
+  await runPlanSession(instruction, { projectRoot, ...opts });
+
+  // 8. 显示统计
+  printStats();
+
+  // 9. 自动运行（非 planOnly 模式）
+  if (shouldAutoRun) {
+    console.log('');
+    log('info', '开始自动执行任务...');
+    const { run: runCoding } = require('./runner');
+    await runCoding(opts);
+  }
 }
 
-module.exports = {
-  runPlanSession,
-  run,
-  parseInput,
-  getUserInput,
-  buildPlanPrompt,
-  extractPlanPath,
-  copyPlanToProject,
-  readUserInputFile,
-};
+module.exports = { runPlanSession, run };
