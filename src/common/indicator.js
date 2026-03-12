@@ -14,11 +14,15 @@ class Indicator {
     this.timer = null;
     this.lastActivity = '';
     this.lastToolTime = Date.now();
-    this.lastActivityTime = Date.now(); // 最后活动时间（包括文字输出）
+    this.lastActivityTime = Date.now();
     this.sessionNum = 0;
     this.startTime = Date.now();
     this.stallTimeoutMin = 30;
-    this.completionTimeoutMin = null; // session_result 写入后的缩短超时
+    this.completionTimeoutMin = null;
+    this.toolRunning = false;
+    this.toolStartTime = 0;
+    this.currentToolName = '';
+    this._paused = false;
   }
 
   start(sessionNum, stallTimeoutMin) {
@@ -57,6 +61,22 @@ class Indicator {
     this.lastActivityTime = Date.now();
   }
 
+  startTool(name) {
+    this.toolRunning = true;
+    this.toolStartTime = Date.now();
+    this.currentToolName = name;
+    this.lastActivityTime = Date.now();
+  }
+
+  endTool() {
+    if (!this.toolRunning) return;
+    this.toolRunning = false;
+    this.lastActivityTime = Date.now();
+  }
+
+  pauseRendering() { this._paused = true; }
+  resumeRendering() { this._paused = false; }
+
   getStatusLine() {
     const now = new Date();
     const hh = String(now.getHours()).padStart(2, '0');
@@ -78,7 +98,12 @@ class Indicator {
 
     let line = `${spinner} [Session ${this.sessionNum}] ${clock} ${phaseLabel} ${mm}:${ss}`;
     if (idleMin >= 2) {
-      if (this.completionTimeoutMin) {
+      if (this.toolRunning) {
+        const toolSec = Math.floor((Date.now() - this.toolStartTime) / 1000);
+        const toolMm = Math.floor(toolSec / 60);
+        const toolSs = toolSec % 60;
+        line += ` | ${COLOR.yellow}工具执行中 ${toolMm}:${String(toolSs).padStart(2, '0')}${COLOR.reset}`;
+      } else if (this.completionTimeoutMin) {
         line += ` | ${COLOR.red}${idleMin}分无响应（session_result 已写入, ${this.completionTimeoutMin}分钟超时自动中断）${COLOR.reset}`;
       } else {
         line += ` | ${COLOR.red}${idleMin}分无响应（等待模型响应, ${this.stallTimeoutMin}分钟超时自动中断）${COLOR.reset}`;
@@ -99,6 +124,7 @@ class Indicator {
   }
 
   _render() {
+    if (this._paused) return;
     this.spinnerIndex++;
     process.stderr.write(`\r\x1b[K${this.getStatusLine()}`);
   }
@@ -115,9 +141,16 @@ function extractFileTarget(toolInput) {
 function extractBashLabel(cmd) {
   if (cmd.includes('git ')) return 'Git 操作';
   if (cmd.includes('npm ') || cmd.includes('pip ') || cmd.includes('pnpm ') || cmd.includes('yarn ')) return '安装依赖';
-  if (cmd.includes('curl') || cmd.includes('pytest') || cmd.includes('jest') || /\btest\b/.test(cmd)) return '测试验证';
+  if (/\b(sleep|Start-Sleep|timeout\s+\/t)\b/i.test(cmd)) return '等待就绪';
+  if (cmd.includes('curl')) return '网络请求';
+  if (cmd.includes('pytest') || cmd.includes('jest') || /\btest\b/.test(cmd)) return '测试验证';
   if (cmd.includes('python ') || cmd.includes('node ')) return '执行脚本';
   return '执行命令';
+}
+
+function extractMcpTarget(toolInput) {
+  if (!toolInput || typeof toolInput !== 'object') return '';
+  return String(toolInput.url || toolInput.text || toolInput.element || '').slice(0, 60);
 }
 
 /**
