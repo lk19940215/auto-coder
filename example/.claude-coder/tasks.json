@@ -19,7 +19,7 @@
         "在 App.tsx 中引入 Header 和 Footer 组件",
         "Playwright MCP 验证导航栏和页脚渲染正确，链接可点击"
       ],
-      "status": "pending",
+      "status": "done",
       "depends_on": ["feat-003"]
     },
     {
