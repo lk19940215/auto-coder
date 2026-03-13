@@ -43,6 +43,15 @@
       "taskId": "feat-003",
       "statusAfter": "done",
       "notes": "本次完成 feat-003：迁移基础设施（验证完成）。\n\n验证结果：\n1. src/router/index.tsx: React Router v6 HashRouter，5 个路由配置，懒加载 + Suspense，路由跳转正常\n2. src/assets/styles/global.css: CSS 变量、Tailwind 指令、组件样式类全部就位\n3. src/types/index.ts: NavLink、Feature、DocItem、Example 等类型定义完整\n4. src/utils/index.ts: sleep、scrollToElement、copyToClipboard、debounce 等工具函数就位\n\n构建验证：npm run build 成功，无编译错误\n\nPlaywright 验证：首页和 /features 路由渲染正常，Header/Footer/各区块样式正确\n\n注意：任务步骤中提到的迁移 global.css 到 src/styles/ 实际保持 src/assets/styles/ 路径，与 main.tsx 导入一致。"
+    },
+    {
+      "session": 6,
+      "timestamp": "2026-03-13T15:52:23.167Z",
+      "result": "success",
+      "cost": 0.420809,
+      "taskId": "unknown",
+      "statusAfter": "done",
+      "notes": "本次完成 feat-004：迁移通用组件 Header 和 Footer。\n\n已完成工作：\n1. 确认 Header.tsx 和 Footer.tsx 组件已存在且代码完整\n2. 修改 App.tsx，引入 Header 和 Footer 组件，使用 main 标签包裹 Outlet 并添加 pt-16 padding 为固定 Header 留出空间\n3. Playwright MCP 验证：\n   - 首页 Header 和 Footer 渲染正确\n   - 导航链接显示正常（首页、功能特性、快速上手、文档、案例）\n   - 路由跳转 /#/features 成功\n   - 页面内容正确渲染\n\n下个任务：feat-005（迁移首页组件 HeroSection、FeaturesSection、HowItWorks、CTASection），需要在 Home.tsx 中组合这些组件。"
     }
   ]
 }

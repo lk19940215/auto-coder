@@ -14,6 +14,13 @@
       "expected": "HTTP 200, React 应用渲染成功，TypeScript 编译通过",
       "last_result": "pass",
       "last_run_session": 2
+    },
+    {
+      "feature_id": "feat-005",
+      "verify": "Playwright MCP 访问首页，检查 HeroSection、FeaturesSection、HowItWorks、CTASection 四个区块渲染",
+      "expected": "四个区块标题正确，卡片/步骤/终端预览正常显示",
+      "last_result": "pass",
+      "last_run_session": 7
     }
   ]
 }

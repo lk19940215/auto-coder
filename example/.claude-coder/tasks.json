@@ -34,7 +34,7 @@
         "转换 CTASection.tsx，组合为 Home.tsx 页面",
         "Playwright MCP 访问首页，验证四个区块内容和样式"
       ],
-      "status": "pending",
+      "status": "done",
       "depends_on": ["feat-004"]
     },
     {
