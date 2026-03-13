@@ -17,7 +17,7 @@
       "depends_on": []
     },
     {
-      "id": "feat-002",
+      {"id": "feat-002",
       "category": "frontend",
       "priority": 2,
       "description": "搭建 React 18 + TypeScript 开发环境",
@@ -28,7 +28,7 @@
         "创建 src/main.tsx 和 src/App.tsx 入口文件",
         "执行 npm install && npm run dev，验证 React 应用启动无编译错误"
       ],
-      "status": "pending",
+      "status": "done",
       "depends_on": ["feat-001"]
     },
     {

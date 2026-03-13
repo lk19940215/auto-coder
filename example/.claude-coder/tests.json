@@ -8,5 +8,12 @@
       "last_result": "pass",
       "last_run_session": 1
     }
+    {
+      "feature_id": "feat-002",
+      "verify": "curl -s http://localhost:5175/claude-coder/ | grep -q 'React 18 + TypeScript'",
+      "expected": "HTTP 200, React 应用渲染成功，TypeScript 编译通过",
+      "last_result": "pass",
+      "last_run_session": 2
+    }
   ]
 }
