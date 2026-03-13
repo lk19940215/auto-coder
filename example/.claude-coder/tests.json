@@ -7,7 +7,7 @@
       "expected": "HTTP 200, 页面标题正确，Tailwind 样式生效",
       "last_result": "pass",
       "last_run_session": 1
-    }
+    },
     {
       "feature_id": "feat-002",
       "verify": "curl -s http://localhost:5175/claude-coder/ | grep -q 'React 18 + TypeScript'",
@@ -21,6 +21,13 @@
       "expected": "四个区块标题正确，卡片/步骤/终端预览正常显示",
       "last_result": "pass",
       "last_run_session": 7
+    },
+    {
+      "feature_id": "feat-010",
+      "verify": "Playwright MCP 访问 /#/examples 页面，验证包含 id=5 的 AI 教学 PPT 生成器卡片和 github.com/lk19940215/ai-teaching-ppt 链接",
+      "expected": "页面显示 5 个示例卡片，第 5 个卡片标题为'AI 教学 PPT 生成器'，包含'查看仓库'按钮指向正确 GitHub 仓库",
+      "last_result": "pass",
+      "last_run_session": 6
     }
   ]
 }

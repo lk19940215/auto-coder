@@ -23,7 +23,7 @@
         "更新示例卡片组件，添加 GitHub 仓库链接按钮",
         "Playwright MCP 访问 /examples 页面，验证新示例卡片和仓库链接可点击"
       ],
-      "status": "pending",
+      "status": "done",
       "depends_on": ["feat-007"]
     },
     {
