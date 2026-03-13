@@ -1,0 +1,76 @@
+{
+  "name": "claude-coder-website",
+  "detected_at": "2026-03-13T22:30:00",
+  "project_type": "new",
+  "tech_stack": {
+    "languages": ["javascript", "vue"],
+    "backend": {
+      "framework": "none",
+      "runtime": "node",
+      "entry": "none"
+    },
+    "frontend": {
+      "framework": "vue",
+      "bundler": "vite",
+      "dir": "."
+    },
+    "database": "none",
+    "package_managers": ["npm"]
+  },
+  "services": [
+    {
+      "name": "frontend-dev",
+      "command": "npm run dev",
+      "port": 5173,
+      "health_check": "http://localhost:5173",
+      "cwd": "."
+    },
+    {
+      "name": "frontend-preview",
+      "command": "npm run preview",
+      "port": 4173,
+      "health_check": "http://localhost:4173",
+      "cwd": "."
+    }
+  ],
+  "env_setup": {
+    "python_env": "none",
+    "node_version": "20"
+  },
+  "existing_docs": [
+    "README.md",
+    "requirements.md",
+    ".claude/CLAUDE.md"
+  ],
+  "has_tests": false,
+  "has_docker": false,
+  "mcp_tools": {
+    "playwright": true
+  },
+  "custom_init": ["npm install"],
+  "scan_files_checked": [
+    "requirements.md",
+    "package.json",
+    "vite.config.js",
+    "index.html",
+    "README.md",
+    "src/main.js",
+    "src/App.vue",
+    "src/router/index.js",
+    "src/assets/styles/global.css",
+    "src/components/common/Header.vue",
+    "src/components/common/Footer.vue",
+    "src/components/home/HeroSection.vue",
+    "src/components/home/FeaturesSection.vue",
+    "src/components/home/HowItWorks.vue",
+    "src/components/home/CTASection.vue",
+    "src/pages/Home.vue",
+    "src/pages/Features.vue",
+    "src/pages/QuickStart.vue",
+    "src/pages/Docs.vue",
+    "src/pages/Examples.vue",
+    ".github/workflows/deploy.yml",
+    ".claude/CLAUDE.md",
+    "public/robots.txt"
+  ]
+}

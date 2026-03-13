@@ -1,0 +1,162 @@
+/* Tailwind CSS */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CSS Variables */
+:root {
+  /* 科技蓝（主色） */
+  --primary-50: #f0f9ff;
+  --primary-100: #e0f2fe;
+  --primary-200: #bae6fd;
+  --primary-300: #7dd3fc;
+  --primary-400: #38bdf8;
+  --primary-500: #0ea5e9;
+  --primary-600: #0284c7;
+  --primary-700: #0369a1;
+  --primary-800: #075985;
+  --primary-900: #0c4a6e;
+
+  /* 深空灰（背景） */
+  --gray-900: #111827;
+  --gray-800: #1f2937;
+  --gray-700: #374151;
+
+  /* 渐变紫（强调色） */
+  --gradient-start: #8b5cf6;
+  --gradient-end: #ec4899;
+
+  /* 成功绿 */
+  --success-500: #10b981;
+
+  /* 警告黄 */
+  --warning-500: #f59e0b;
+
+  /* 错误红 */
+  --error-500: #ef4444;
+}
+
+.dark {
+  /* 背景 */
+  --bg-50: #0a0a0f;
+  --bg-100: #121218;
+  --bg-200: #1e1e28;
+
+  /* 文字 */
+  --text-50: #f9fafb;
+  --text-200: #e5e7eb;
+  --text-400: #9ca3af;
+  --text-600: #4b5563;
+
+  /* 边框 */
+  --border-300: #374151;
+  --border-400: #4b5563;
+
+  /* 代码块 */
+  --code-bg: #1a1a22;
+  --code-border: #2d2d3a;
+}
+
+/* Reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.6;
+  background-color: var(--bg-100);
+  color: var(--text-200);
+}
+
+/* Gradient Button */
+.btn-primary {
+  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 25px rgba(139, 92, 246, 0.4);
+}
+
+/* Glass Card */
+.card {
+  background: linear-gradient(var(--bg-200), var(--bg-200)) padding-box,
+              linear-gradient(135deg, var(--primary-500), var(--gradient-start)) border-box;
+  border: 2px solid transparent;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 40px rgba(139, 92, 246, 0.15);
+}
+
+/* Hero Background */
+.hero-bg {
+  background: radial-gradient(
+    circle at 20% 30%,
+    rgba(139, 92, 246, 0.1) 0%,
+    rgba(236, 72, 153, 0.05) 50%,
+    transparent 100%
+  );
+}
+
+/* Code Block */
+.code-block {
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.875rem;
+  overflow-x: auto;
+}
+
+/* Terminal */
+.terminal {
+  background: #0d0d12;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.terminal-header {
+  background: #1a1a22;
+  padding: 0.5rem 1rem;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.terminal-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.terminal-dot.red { background: #ff5f56; }
+.terminal-dot.yellow { background: #ffbd2e; }
+.terminal-dot.green { background: #27ca40; }
+
+.terminal-body {
+  padding: 1rem;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}

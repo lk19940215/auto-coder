@@ -1,0 +1,3 @@
+.claude-coder/.env
+.claude-coder/.runtime/
+.claude-coder/test.env
