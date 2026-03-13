@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "test_cases": [
+    {
+      "feature_id": "feat-001",
+      "verify": "curl -s http://localhost:5173/ | grep -q 'Claude Coder'",
+      "expected": "HTTP 200, 页面标题正确，Tailwind 样式生效",
+      "last_result": "pass",
+      "last_run_session": 1
+    }
+  ]
+}

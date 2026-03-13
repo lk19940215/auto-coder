@@ -13,7 +13,7 @@
         "执行 npm install -D autoprefixer 安装缺失依赖",
         "执行 npm run dev，Playwright MCP 访问 http://localhost:5173 验证样式生效"
       ],
-      "status": "pending",
+      "status": "done",
       "depends_on": []
     },
     {
