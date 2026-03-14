@@ -248,3 +248,105 @@ body {
   box-shadow: 0 10px 40px rgba(34, 211, 238, 0.2),
               0 0 60px rgba(251, 191, 36, 0.1);
 }
+
+/* ========== 浮动动画 ========== */
+
+/* 基础浮动动画 */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* 微抖动动画 */
+@keyframes microShake {
+  0%, 100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  25% {
+    transform: translateX(-1px) rotate(-0.5deg);
+  }
+  75% {
+    transform: translateX(1px) rotate(0.5deg);
+  }
+}
+
+.animate-micro-shake {
+  animation: microShake 0.3s ease-in-out infinite;
+}
+
+/* 延迟浮动动画 */
+.animate-float-delay-0 {
+  animation: float 3s ease-in-out infinite;
+  animation-delay: 0s;
+}
+
+.animate-float-delay-1 {
+  animation: float 3s ease-in-out infinite;
+  animation-delay: 0.5s;
+}
+
+.animate-float-delay-2 {
+  animation: float 3s ease-in-out infinite;
+  animation-delay: 1s;
+}
+
+/* ========== 粒子系统样式 ========== */
+
+.particle-container {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+}
+
+.particle {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.particle-fly {
+  animation: particleFade 1s ease-out forwards;
+}
+
+@keyframes particleFade {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.2);
+  }
+}
+
+/* ========== 导航项样式 ========== */
+
+.nav-item {
+  display: block;
+  padding: 0.5rem 1rem;
+  color: var(--text-200);
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.nav-item:hover {
+  color: var(--text-50);
+  background-color: rgba(139, 92, 246, 0.1);
+}
+
+.nav-item.active {
+  color: var(--lazy-cyan);
+  background-color: rgba(34, 211, 238, 0.1);
+  font-weight: 500;
+}

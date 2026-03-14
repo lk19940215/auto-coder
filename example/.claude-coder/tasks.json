@@ -79,7 +79,7 @@
         "添加 .nav-item、.nav-item:hover、.nav-item.active 导航项样式",
         "Playwright MCP 验证样式文件编译成功，无 CSS 语法错误"
       ],
-      "status": "pending",
+      "status": "done",
       "depends_on": ["feat-011"]
     },
     {
@@ -93,7 +93,7 @@
         "添加微抖动动画类到标语文本",
         "Playwright MCP 访问首页，验证标题浮动、标语微抖动、粒子自动+点击触发正常"
       ],
-      "status": "pending",
+      "status": "done",
       "depends_on": ["feat-013", "feat-014"]
     },
     {

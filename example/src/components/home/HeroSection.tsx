@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { GITHUB_REPO_URL } from '../../utils';
+import ParticleContainer from '../common/ParticleContainer';
 
 const HeroSection: React.FC = () => {
   return (
@@ -11,12 +12,14 @@ const HeroSection: React.FC = () => {
             Claude Coder
           </span>
         </h1>
-        <p className="text-xl sm:text-2xl text-[var(--lazy-cyan)] mb-8 max-w-3xl mx-auto font-semibold text-glow animate-blink">
+        <p className="text-xl sm:text-2xl text-[var(--lazy-cyan)] mb-8 max-w-3xl mx-auto font-semibold text-glow animate-blink animate-float">
           摸鱼神器 🐟
         </p>
-        <p className="text-lg text-[var(--text-400)] mb-12 max-w-2xl mx-auto animate-fade-in-up">
-          AI 加班你摸鱼，Claude Coder 帮你搞定一切。一句话需求 → 完整项目。长时间自运行，自动分解任务、持续编码、验证交付。
-        </p>
+        <ParticleContainer autoTrigger={true} triggerDelay={500} className="inline-block">
+          <p className="text-lg text-[var(--text-400)] mb-12 max-w-2xl mx-auto animate-fade-in-up animate-micro-shake">
+            AI 加班你摸鱼，Claude Coder 帮你搞定一切。一句话需求 → 完整项目。长时间自运行，自动分解任务、持续编码、验证交付。
+          </p>
+        </ParticleContainer>
 
         {/* CTA Buttons */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
