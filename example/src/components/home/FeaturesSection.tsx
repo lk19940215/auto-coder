@@ -1,4 +1,5 @@
 import React from 'react';
+import ParticleContainer from '../common/ParticleContainer';
 
 const features = [
   {
@@ -37,19 +38,24 @@ const FeaturesSection: React.FC = () => {
   return (
     <section className="py-20 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl sm:text-4xl font-bold text-[var(--text-50)] mb-4">
-            核心特性
-          </h2>
-          <p className="text-lg text-[var(--text-400)] max-w-2xl mx-auto">
-            让 AI 成为真正的编码伙伴，从需求到交付，全程自主执行
-          </p>
-        </div>
+        <ParticleContainer autoTrigger={true} triggerDelay={300} className="w-full">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold text-[var(--text-50)] mb-4">
+              核心特性
+            </h2>
+            <p className="text-lg text-[var(--text-400)] max-w-2xl mx-auto">
+              让 AI 成为真正的编码伙伴，从需求到交付，全程自主执行
+            </p>
+          </div>
+        </ParticleContainer>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {features.map((feature, index) => (
-            <div key={index} className="card">
-              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[var(--primary-500)] to-[var(--gradient-start)] flex items-center justify-center mb-4">
+            <div
+              key={index}
+              className={`card animate-float-delay-${index % 3}`}
+            >
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-[var(--fish-gold)] to-[var(--lazy-cyan)] flex items-center justify-center mb-4">
                 <svg
                   className="w-6 h-6 text-white"
                   fill="none"

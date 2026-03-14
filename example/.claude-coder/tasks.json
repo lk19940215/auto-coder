@@ -107,7 +107,7 @@
         "包裹第40-47行标题为 ParticleContainer，配置 autoTrigger=true triggerDelay=300",
         "Playwright MCP 访问首页，验证6个模块交替起伏、配色统一、标题粒子自动触发"
       ],
-      "status": "pending",
+      "status": "done",
       "depends_on": ["feat-013", "feat-014"]
     },
     {
