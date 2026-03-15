@@ -1,6 +1,6 @@
 'use strict';
 
-const { runSession } = require('./base');
+const { runSession } = require('./session');
 const { buildQueryOptions } = require('./query');
 const { log } = require('../common/config');
 const { assets } = require('../common/assets');

@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 const { log, COLOR, updateEnvVar } = require('../../common/config');
-const { appendGitignore } = require('../../common/utils');
+const { ensureGitignore: ensureGitignoreBase } = require('../../common/utils');
 const { assets } = require('../../common/assets');
 
 function createInterface() {
@@ -65,13 +65,7 @@ function writeConfig(filePath, lines) {
 }
 
 function ensureGitignore() {
-  const projectRoot = assets.projectRoot;
-  const patterns = ['.claude-coder/.env', '.claude-coder/.runtime/'];
-  let added = false;
-  for (const pattern of patterns) {
-    if (appendGitignore(projectRoot, pattern)) added = true;
-  }
-  if (added) {
+  if (ensureGitignoreBase(assets.projectRoot)) {
     log('info', '已更新 .gitignore');
   }
 }

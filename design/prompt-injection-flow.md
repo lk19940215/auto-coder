@@ -35,10 +35,10 @@ cli.js → runner.run(opts) → for loop → runCodingSession(session, opts)
 
 ```
 buildSystemPrompt('coding')
-├── assets.read('coreProtocol')     ← templates/coreProtocol.md
-│   └── 4 条全局铁律 + session_result.json 格式 + 全局文件权限表
-└── assets.read('codingSystem')     ← templates/codingSystem.md
-    └── 编码身份 + 7 条编码铁律 + 编码文件表 + 状态机 + 6 步工作流
+├── assets.read('codingSystem')     ← templates/codingSystem.md（置顶，primacy zone）
+│   └── 编码身份 + 铁律 + 状态机 + 3 步工作流 + 工具规范 + 禁止清单
+└── assets.read('coreProtocol')     ← templates/coreProtocol.md
+    └── 全局铁律 + session_result.json 格式 + 全局文件权限表
 ```
 
 ### User Prompt 组装
@@ -49,54 +49,45 @@ buildCodingContext(sessionNum, opts)
     │
     ├── {{sessionNum}}                   ← 当前 session 编号（固定注入）
     │
-    ├── {{requirementsHint}}             ← buildRequirementsHint()
-    │   条件: requirements.md 存在
-    │   读取: fs.existsSync(projectRoot/requirements.md)
-    │   内容: "需求文档: <path>。第一步先读取..."
-    │
-    ├── {{mcpHint}}                      ← buildMcpHint(config)
-    │   条件: config.mcpPlaywright === true
-    │   读取: .claude-coder/.env → MCP_PLAYWRIGHT=true
-    │   内容: "前端/全栈任务可用 Playwright MCP..."
-    │
-    ├── {{docsHint}}                     ← buildDocsHint()
-    │   条件: profile 存在
-    │   读取: .claude-coder/project_profile.json → existing_docs, services
-    │   内容: "项目文档: README.md, ..."
-    │   追加: services 为空 → 提示补全；existing_docs 为空 → 提示补全
-    │
-    ├── {{envHint}}                      ← buildEnvHint(consecutiveFailures, sessionNum)
-    │   条件: consecutiveFailures === 0 且 sessionNum > 1
-    │   内容: "环境已就绪，第二步可跳过 init..."
-    │
-    ├── {{taskHint}}                     ← buildTaskHint(projectRoot)
-    │   条件: tasks.json 存在且有未完成任务
-    │   读取: .claude-coder/tasks.json → findNextTask() + getStats()
-    │   内容: "任务上下文: feat-003 '用户登录' (pending), category=backend, steps=4步..."
-    │
-    ├── {{testEnvHint}}                  ← buildTestEnvHint(projectRoot)
-    │   条件: 始终注入
-    │   读取: 检查 .claude-coder/test.env 是否存在
-    │   内容(有): "测试凭证文件: <path>，测试前用 source 加载"
-    │   内容(无): "如需持久化凭证，写入 <path>"
-    │
-    ├── {{playwrightAuthHint}}           ← buildPlaywrightAuthHint(config)
-    │   条件: config.mcpPlaywright === true
-    │   读取: config.playwrightMode + 检查 playwright-auth.json
-    │   内容: 按 persistent/isolated/extension 模式返回不同提示
+    ├── {{taskContext}}                  ← buildTaskContext(projectRoot, taskId)
+    │   条件: 始终注入（结构化任务上下文）
+    │   读取: .claude-coder/tasks.json → selectNextTask() + getStats()
+    │   内容: 任务 ID、描述、状态、category、依赖、完整步骤列表、进度统计
     │
     ├── {{memoryHint}}                   ← buildMemoryHint()
     │   条件: session_result.json 存在且有 session_result 字段
     │   读取: .claude-coder/session_result.json
     │   内容: "上次会话 success（pending → done）。遗留: <notes前200字>"
     │
-    ├── {{serviceHint}}                  ← buildServiceHint(maxSessions)
-    │   条件: 始终注入
-    │   内容: maxSessions===1 ? "停止服务" : "保持服务运行"
+    ├── {{envHint}}                      ← buildEnvHint(consecutiveFailures, sessionNum)
+    │   条件: 按 sessionNum 和失败状态
+    │   内容: 首次会话提示 / 失败后提示 / 空
     │
-    └── {{retryContext}}                 ← buildRetryHint(consecutiveFailures, lastValidateLog)
-        条件: consecutiveFailures > 0
-        内容: "注意：上次会话校验失败，原因：..."
+    ├── {{docsHint}}                     ← buildDocsHint()
+    │   条件: profile.existing_docs 非空
+    │   读取: .claude-coder/project_profile.json → existing_docs
+    │   内容: "项目文档: README.md, ..."
+    │
+    ├── {{testEnvHint}}                  ← buildTestEnvHint(projectRoot)
+    │   条件: test.env 存在
+    │   内容: "测试凭证文件: <path>，测试前用 source 加载"
+    │
+    ├── {{mcpHint}}                      ← buildMcpHint(config, task)
+    │   条件: config.mcpPlaywright === true 且 needsWebTools(task)
+    │   内容: "前端/全栈任务可用 Playwright MCP..."
+    │
+    ├── {{playwrightAuthHint}}           ← buildPlaywrightAuthHint(config, task)
+    │   条件: config.mcpPlaywright === true 且 needsWebTools(task)
+    │   读取: config.playwrightMode + 检查 playwright-auth.json
+    │   内容: 按 persistent/isolated/extension 模式返回不同提示
+    │
+    ├── {{retryContext}}                 ← buildRetryHint(consecutiveFailures, lastValidateLog)
+    │   条件: consecutiveFailures > 0
+    │   内容: "注意：上次会话校验失败，原因：..."
+    │
+    └── {{serviceHint}}                  ← buildServiceHint(maxSessions)
+        条件: 始终注入
+        内容: maxSessions===1 ? "停止服务" : "保持服务运行"
 ```
 
 ### SDK 选项
@@ -156,8 +147,8 @@ SDK 选项:
 ### Phase 2：任务分解（permissionMode: 'bypassPermissions'）
 
 ```
-buildPlanSystemPrompt()
-└── 内联字符串: "你是一个任务分解专家..."
+buildSystemPrompt('plan')
+└── planSystem.md + coreProtocol.md
 
 buildPlanPrompt(planPath)
 └── assets.render('addUser', vars)       ← templates/addUser.md
@@ -186,11 +177,11 @@ buildPlanPrompt(planPath)
 
 SDK 选项:
 ├── permissionMode: 'bypassPermissions'
-├── systemPrompt: buildPlanSystemPrompt()
+├── systemPrompt: buildSystemPrompt('plan')
 └── hooks: ctx.hooks
 
 后处理:
-└── syncAfterPlan()                     ← 同步 harness_state.json 的 next_task_id
+└── syncAfterPlan()                     ← core/harness 同步 harness_state.json 的 next_task_id
 ```
 
 ---
@@ -208,10 +199,9 @@ cli.js → init() → scan({ projectRoot })
 
 ```
 buildSystemPrompt('scan')
-├── assets.read('coreProtocol')     ← templates/coreProtocol.md
-└── assets.read('scanSystem')       ← templates/scanSystem.md
-    └── 扫描身份 + 1 条扫描铁律（禁止业务代码）
-      + 扫描文件表 + 扫描协议步骤 1-3 + profile.json 格式
+├── assets.read('scanSystem')       ← templates/scanSystem.md（置顶）
+│   └── 扫描身份 + 扫描铁律 + 扫描文件表 + 扫描协议步骤 + profile.json 格式
+└── assets.read('coreProtocol')     ← templates/coreProtocol.md
 ```
 
 ### User Prompt 组装
@@ -236,7 +226,7 @@ buildQueryOptions(config, opts)
 
 ---
 
-## 4. `simplify` 命令 → Simplify Session
+## 4. `simplify` 命令 → Simplify Session（含 runner 周期调度）
 
 ### 入口
 
@@ -267,20 +257,20 @@ harness 读取的文件              注入位置              注入条件
 ─────────────────────────────────────────────────────────────
 .claude-coder/.env              SDK env vars          始终
 .claude/CLAUDE.md               SDK settingSources    始终（SDK 自动）
-templates/coreProtocol.md       systemPrompt          coding, scan
-templates/codingSystem.md       systemPrompt          coding
-templates/scanSystem.md         systemPrompt          scan
+templates/codingSystem.md       systemPrompt          coding（置顶）
+templates/scanSystem.md         systemPrompt          scan（置顶）
+templates/planSystem.md         systemPrompt          plan（置顶）
+templates/coreProtocol.md       systemPrompt          coding, scan, plan（附后）
 templates/codingUser.md         user prompt           coding
 templates/scanUser.md           user prompt           scan
 templates/addUser.md            user prompt           plan phase 2
 templates/addGuide.md           user prompt           plan phase 2（嵌入）
 templates/guidance.json         hooks                 coding（工具匹配时）
 templates/playwright.md         hooks                 coding（MCP 工具首次调用）
-templates/bash-process.md       hooks                 coding（kill 命令时）
-.claude-coder/project_profile   docsHint, taskContext 存在时
-.claude-coder/tasks.json        taskHint, taskContext 存在时
+templates/bash-process.md       hooks                 coding（kill/taskkill 命令时）
+.claude-coder/project_profile   docsHint              profile.existing_docs 非空时
+.claude-coder/tasks.json        taskContext            始终（结构化注入）
 .claude-coder/session_result    memoryHint            存在时
-.claude-coder/test.env          testEnvHint           始终（内容不同）
+.claude-coder/test.env          testEnvHint           存在时
 .runtime/harness_state.json     taskContext(plan)     plan phase 2
-requirements.md                 requirementsHint      存在时（仅 coding）
 ```

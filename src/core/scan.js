@@ -2,7 +2,7 @@
 
 const { log } = require('../common/config');
 const { assets } = require('../common/assets');
-const { runSession } = require('./base');
+const { runSession } = require('./session');
 const { buildQueryOptions, hasCodeFiles } = require('./query');
 const { buildSystemPrompt, buildScanPrompt } = require('./prompts');
 const { extractResult } = require('../common/logging');

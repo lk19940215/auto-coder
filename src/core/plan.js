@@ -4,14 +4,14 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const readline = require('readline');
-const { runSession } = require('./base');
+const { runSession } = require('./session');
 const { buildQueryOptions } = require('./query');
-const { buildPlanSystemPrompt, buildPlanPrompt } = require('./prompts');
+const { buildSystemPrompt, buildPlanPrompt } = require('./prompts');
 const { log, loadConfig } = require('../common/config');
 const { assets } = require('../common/assets');
 const { extractResultText } = require('../common/logging');
 const { printStats } = require('../common/tasks');
-const { syncAfterPlan } = require('../common/state');
+const { syncAfterPlan } = require('./harness');
 
 const EXIT_TIMEOUT_MS = 300000;
 const PLANS_DIR = path.join(os.homedir(), '.claude', 'plans');
@@ -233,7 +233,7 @@ async function runPlanSession(instruction, opts = {}) {
 
       const tasksPrompt = buildPlanPrompt(planResult.targetPath);
       const queryOpts = buildQueryOptions(ctx.config, opts);
-      queryOpts.systemPrompt = buildPlanSystemPrompt();
+      queryOpts.systemPrompt = buildSystemPrompt('plan');
       queryOpts.hooks = ctx.hooks;
       queryOpts.abortController = ctx.abortController;
 

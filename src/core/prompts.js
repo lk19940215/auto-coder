@@ -4,8 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const { loadConfig } = require('../common/config');
 const { assets } = require('../common/assets');
-const { loadTasks, findNextTask, getStats } = require('../common/tasks');
-const { loadState } = require('../common/state');
+const { loadTasks, getStats } = require('../common/tasks');
+const { loadState, selectNextTask } = require('./harness');
 
 // --------------- System Prompt ---------------
 
@@ -15,92 +15,107 @@ function buildSystemPrompt(type) {
   switch (type) {
     case 'scan':    specific = assets.read('scanSystem') || ''; break;
     case 'coding':  specific = assets.read('codingSystem') || ''; break;
+    case 'plan':    specific = assets.read('planSystem') || ''; break;
   }
-  return specific ? `${core}\n\n${specific}` : core;
+  return specific ? `${specific}\n\n${core}` : core;
+}
+
+// --------------- Task Type Detection ---------------
+
+const WEB_CATEGORIES = new Set(['frontend', 'fullstack', 'test', 'e2e']);
+const WEB_KEYWORDS = /playwright|browser|页面|前端|UI|端到端|e2e/i;
+
+function needsWebTools(task) {
+  if (!task) return true;
+  if (WEB_CATEGORIES.has(task.category)) return true;
+  const text = [task.description || '', ...(task.steps || [])].join(' ');
+  return WEB_KEYWORDS.test(text);
 }
 
 // --------------- Hint Builders ---------------
 
-function buildRequirementsHint() {
-  const reqPath = path.join(assets.projectRoot, 'requirements.md');
-  if (!fs.existsSync(reqPath)) return '';
-  return `需求文档: ${reqPath}。第一步先读取，了解用户的技术约束和偏好。`;
-}
-
-function buildMcpHint(config) {
-  return config.mcpPlaywright
-    ? '前端/全栈任务可用 Playwright MCP（browser_navigate、browser_snapshot、browser_click 等）做端到端测试。'
-    : '';
+function buildMcpHint(config, task) {
+  if (!config.mcpPlaywright) return '';
+  if (!needsWebTools(task)) return '';
+  return '前端/全栈任务可用 Playwright MCP（browser_navigate、browser_snapshot、browser_click 等）做端到端测试。';
 }
 
 function buildRetryHint(consecutiveFailures, lastValidateLog) {
   if (consecutiveFailures > 0 && lastValidateLog) {
-    return `\n注意：上次会话校验失败，原因：${lastValidateLog}。请避免同样的问题。`;
+    return `注意：上次会话校验失败，原因：${lastValidateLog}。请避免同样的问题。`;
   }
   return '';
 }
 
 function buildEnvHint(consecutiveFailures, sessionNum) {
-  if (consecutiveFailures === 0 && sessionNum > 1) {
-    return '环境已就绪，第二步可跳过 claude-coder init，仅确认服务存活。涉及新依赖时仍需运行 claude-coder init。';
-  }
+  if (sessionNum <= 1) return '首次会话，需要时执行 claude-coder init 初始化环境。';
+  if (consecutiveFailures > 0) return '上次失败，建议先确认环境状态。';
   return '';
 }
 
 function buildDocsHint() {
   const profile = assets.readJson('profile', null);
   if (!profile) return '';
-  let hint = '';
   const docs = profile.existing_docs || [];
   if (docs.length > 0) {
-    hint = `项目文档: ${docs.join(', ')}。Step 4 编码前先读与任务相关的文档，了解接口约定和编码规范。完成后若新增了模块或 API，更新对应文档。`;
+    return `项目文档: ${docs.join(', ')}。编码前先读与任务相关的文档，了解接口约定和编码规范。`;
   }
-  if (profile.tech_stack?.backend?.framework &&
-      (!profile.services || profile.services.length === 0)) {
-    hint += ' 注意：project_profile.json 的 services 为空，请在本次 session 末尾补全 services 数组（command, port, health_check）。';
-  }
-  if (!docs.length) {
-    hint += ' 注意：project_profile.json 的 existing_docs 为空，请在 Step 6 收尾时补全文档列表。';
-  }
-  return hint;
+  return '';
 }
 
-function buildTaskHint(projectRoot) {
+function buildTaskContext(projectRoot, taskId) {
   try {
     const taskData = loadTasks();
-    if (!taskData) return '';
-    const next = findNextTask(taskData);
+    if (!taskData) return '无法读取 tasks.json，请手动检查。';
+    const features = taskData.features || [];
     const stats = getStats(taskData);
-    if (next) {
-      return `任务上下文: ${next.id} "${next.description}" (${next.status}), ` +
-        `category=${next.category}, steps=${next.steps.length}步。` +
-        `进度: ${stats.done}/${stats.total} done, ${stats.failed} failed。` +
-        `项目绝对路径: ${projectRoot}。运行时目录: ${projectRoot}/.claude-coder/（隐藏目录）。` +
-        `第一步无需读取 tasks.json（已注入），直接确认任务后进入 Step 2。`;
-    }
-  } catch { /* ignore */ }
-  return '';
+
+    const task = taskId
+      ? features.find(f => f.id === taskId)
+      : selectNextTask(taskData);
+
+    if (!task) return '无待处理任务。';
+
+    const steps = (task.steps || [])
+      .map((s, i) => `  ${i + 1}. ${s}`)
+      .join('\n');
+
+    const deps = (task.depends_on || []).length > 0
+      ? `depends_on: [${task.depends_on.join(', ')}]`
+      : '';
+
+    return [
+      `**${task.id}**: "${task.description}"`,
+      `状态: ${task.status}, category: ${task.category}, priority: ${task.priority || 'N/A'} ${deps}`,
+      `步骤:\n${steps}`,
+      `进度: ${stats.done}/${stats.total} done, ${stats.failed} failed`,
+      `项目路径: ${projectRoot}`,
+    ].join('\n');
+  } catch {
+    return '任务上下文加载失败，请读取 .claude-coder/tasks.json 自行确认。';
+  }
 }
 
 function buildTestEnvHint(projectRoot) {
   if (assets.exists('testEnv')) {
-    return `测试凭证文件: ${projectRoot}/.claude-coder/test.env（含 API Key、测试账号等），测试前用 source ${projectRoot}/.claude-coder/test.env 加载。发现新凭证需求时可追加写入（KEY=value 格式）。`;
+    return `测试凭证文件: ${projectRoot}/.claude-coder/test.env（含 API Key、测试账号等），测试前用 source 加载。`;
   }
-  return `如需持久化测试凭证（API Key、测试账号密码等），写入 ${projectRoot}/.claude-coder/test.env（KEY=value 格式，每行一个）。后续 session 会自动感知。`;
+  return '';
 }
 
-function buildPlaywrightAuthHint(config) {
+function buildPlaywrightAuthHint(config, task) {
   if (!config.mcpPlaywright) return '';
+  if (!needsWebTools(task)) return '';
   const mode = config.playwrightMode;
   switch (mode) {
     case 'persistent':
-      return 'Playwright MCP 使用 persistent 模式（user-data-dir），浏览器登录状态持久保存在本地配置中，无需额外登录操作。';
+      return 'Playwright MCP 使用 persistent 模式，浏览器登录状态持久保存，无需额外登录操作。';
     case 'isolated':
       return assets.exists('playwrightAuth')
-        ? 'Playwright MCP 使用 isolated 模式，已检测到登录状态文件（playwright-auth.json），每次会话自动加载 cookies 和 localStorage。'
-        : 'Playwright MCP 使用 isolated 模式，但未检测到登录状态文件。如目标页面需要登录，请先运行 claude-coder auth <URL>。';
+        ? 'Playwright MCP 使用 isolated 模式，已检测到登录状态文件，每次会话自动加载。'
+        : 'Playwright MCP 使用 isolated 模式，未检测到登录状态文件。如需登录，请先运行 claude-coder auth <URL>。';
     case 'extension':
-      return 'Playwright MCP 使用 extension 模式，已连接用户真实浏览器，直接复用浏览器已有的登录态和扩展。注意：操作会影响用户正在使用的浏览器。';
+      return 'Playwright MCP 使用 extension 模式，已连接用户真实浏览器，直接复用已有登录态。';
     default:
       return '';
   }
@@ -122,6 +137,15 @@ function buildServiceHint(maxSessions) {
 
 // --------------- Context Builders ---------------
 
+function _resolveTask(taskId) {
+  try {
+    const taskData = loadTasks();
+    if (!taskData) return null;
+    const features = taskData.features || [];
+    return taskId ? features.find(f => f.id === taskId) : selectNextTask(taskData);
+  } catch { return null; }
+}
+
 /**
  * 构建 coding session 的完整上下文（user prompt）
  */
@@ -129,17 +153,17 @@ function buildCodingContext(sessionNum, opts = {}) {
   const config = loadConfig();
   const consecutiveFailures = opts.consecutiveFailures || 0;
   const projectRoot = assets.projectRoot;
+  const task = _resolveTask(opts.taskId);
 
   return assets.render('codingUser', {
     sessionNum,
-    requirementsHint: buildRequirementsHint(),
-    mcpHint: buildMcpHint(config),
+    taskContext: buildTaskContext(projectRoot, opts.taskId),
+    mcpHint: buildMcpHint(config, task),
     retryContext: buildRetryHint(consecutiveFailures, opts.lastValidateLog),
     envHint: buildEnvHint(consecutiveFailures, sessionNum),
     docsHint: buildDocsHint(),
-    taskHint: buildTaskHint(projectRoot),
     testEnvHint: buildTestEnvHint(projectRoot),
-    playwrightAuthHint: buildPlaywrightAuthHint(config),
+    playwrightAuthHint: buildPlaywrightAuthHint(config, task),
     memoryHint: buildMemoryHint(),
     serviceHint: buildServiceHint(opts.maxSessions || 50),
   });
@@ -152,10 +176,6 @@ function buildScanPrompt(projectType) {
 }
 
 // --------------- Plan Session ---------------
-
-function buildPlanSystemPrompt() {
-  return assets.read('planSystem') || '';
-}
 
 function buildPlanPrompt(planPath) {
   const projectRoot = assets.projectRoot;
@@ -202,6 +222,5 @@ module.exports = {
   buildSystemPrompt,
   buildCodingContext,
   buildScanPrompt,
-  buildPlanSystemPrompt,
   buildPlanPrompt,
 };

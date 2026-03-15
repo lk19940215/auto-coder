@@ -2,10 +2,6 @@
 
 const { log, COLOR } = require('./config');
 const { assets } = require('./assets');
-const { TASK_STATUSES, STATUS_TRANSITIONS } = require('./constants');
-
-const VALID_STATUSES = TASK_STATUSES;
-const TRANSITIONS = STATUS_TRANSITIONS;
 
 function loadTasks() {
   return assets.readJson('tasks', null);
@@ -17,65 +13,6 @@ function saveTasks(data) {
 
 function getFeatures(data) {
   return data?.features || [];
-}
-
-function findNextTask(data) {
-  const features = getFeatures(data);
-  const failed = features.filter(f => f.status === 'failed')
-    .sort((a, b) => (a.priority || 999) - (b.priority || 999));
-  if (failed.length > 0) return failed[0];
-
-  const pending = features.filter(f => f.status === 'pending')
-    .filter(f => {
-      const deps = f.depends_on || [];
-      return deps.every(depId => {
-        const dep = features.find(x => x.id === depId);
-        return dep && dep.status === 'done';
-      });
-    })
-    .sort((a, b) => (a.priority || 999) - (b.priority || 999));
-  if (pending.length > 0) return pending[0];
-
-  const inProgress = features.filter(f => f.status === 'in_progress')
-    .sort((a, b) => (a.priority || 999) - (b.priority || 999));
-  return inProgress[0] || null;
-}
-
-function setStatus(data, taskId, newStatus) {
-  const features = getFeatures(data);
-  const task = features.find(f => f.id === taskId);
-  if (!task) throw new Error(`任务不存在: ${taskId}`);
-  if (!VALID_STATUSES.includes(newStatus)) throw new Error(`无效状态: ${newStatus}`);
-
-  const allowed = TRANSITIONS[task.status];
-  if (!allowed || !allowed.includes(newStatus)) {
-    throw new Error(`非法状态迁移: ${task.status} → ${newStatus}`);
-  }
-
-  task.status = newStatus;
-  saveTasks(data);
-  return task;
-}
-
-function forceStatus(data, status) {
-  const features = getFeatures(data);
-  for (const f of features) {
-    if (f.status === 'in_progress') {
-      f.status = status;
-      saveTasks(data);
-      return f;
-    }
-  }
-  return null;
-}
-
-function addTask(data, task) {
-  if (!data) {
-    data = { project: '', created_at: new Date().toISOString().slice(0, 10), features: [] };
-  }
-  data.features.push(task);
-  saveTasks(data);
-  return data;
 }
 
 function getStats(data) {
@@ -142,15 +79,9 @@ function showStatus() {
 }
 
 module.exports = {
-  VALID_STATUSES,
-  TRANSITIONS,
   loadTasks,
   saveTasks,
   getFeatures,
-  findNextTask,
-  setStatus,
-  forceStatus,
-  addTask,
   getStats,
   printStats,
   showStatus,

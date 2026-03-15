@@ -111,6 +111,20 @@ function appendGitignore(projectRoot, entry) {
   return true;
 }
 
+/**
+ * 确保 .gitignore 包含 claude-coder 的敏感文件条目
+ * @param {string} projectRoot - 项目根目录
+ * @returns {boolean} 是否有新增
+ */
+function ensureGitignore(projectRoot) {
+  const patterns = ['.claude-coder/.env', '.claude-coder/.runtime/'];
+  let added = false;
+  for (const p of patterns) {
+    if (appendGitignore(projectRoot, p)) added = true;
+  }
+  return added;
+}
+
 // ─────────────────────────────────────────────────────────────
 // 进程工具
 // ─────────────────────────────────────────────────────────────
@@ -142,6 +156,7 @@ module.exports = {
   getGitHead,
   isGitRepo,
   appendGitignore,
+  ensureGitignore,
   sleep,
   localTimestamp,
 };

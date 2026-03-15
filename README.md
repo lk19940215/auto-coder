@@ -6,6 +6,7 @@
 
 ### 亮点
 
+- **Harness 生命周期管理**：统一的 Harness 类封装环境准备、任务调度、校验、回滚、推送全生命周期，含 AI 驱动的 JSON 自愈修复
 - **Hook 提示注入**：通过 JSON 配置在工具调用时向模型注入上下文引导，零代码修改即可扩展规则（[机制详解](design/hook-mechanism.md)）
 - **长时间自循环编码**：多 session 编排 + 倒计时活跃度监控 + git 回滚重试，Agent 可持续编码数小时不中断（[守护机制](design/session-guard.md)）
 - **配置驱动**：支持 Claude 官方、Coding Plan 多模型路由、DeepSeek 等任意 Anthropic 兼容 API
@@ -61,24 +62,27 @@ claude-coder run "实现用户注册和登录功能"
                                  ┌──────┴──────┐
                                  │  Session N   │
                                  │  Claude SDK  │
-                                 │  6 步流程    │
+                                 │  3 步流程    │
                                  └──────┬──────┘
                                         │
-                                   harness 校验
+                                   Harness 校验
+                                   (含 AI 自愈)
                                         │
-                              通过 → 下一个任务
+                              通过 → simplify? → push → 下一个任务
                               失败 → git 回滚 + 重试
 ```
 
-每个 session 内，Agent 自主执行 6 步：恢复上下文 → 环境检查 → 选任务 → 编码 → 测试 → 收尾（git commit）。
+每个 session 内，Agent 自主执行 3 步：**实现**（任务上下文由 harness 注入，编码实现） → **验证**（按 category 选最轻量测试） → **收尾**（git commit + 写 session_result.json）。
+
+Harness 在 session 结束后自动校验 `session_result.json` + git 进度。校验失败时 AI 自动尝试修复损坏的 JSON 文件（`repair.js`），仍失败则回滚代码并重试。
 
 ## 机制文档
 
 | 文档 | 说明 |
 |------|------|
+| [技术架构](design/ARCHITECTURE.md) | 核心设计规则、Harness 类职责、模块关系、Prompt 注入架构 |
 | [Hook 注入机制](design/hook-mechanism.md) | SDK Hook 调研、GuidanceInjector 三级匹配、配置格式、副作用评估 |
 | [Session 守护机制](design/session-guard.md) | 中断策略、倒计时活跃度检测、工具运行状态追踪、防刷屏 |
-| [技术架构](design/ARCHITECTURE.md) | 核心设计规则、模块职责、提示语注入架构 |
 | [测试凭证方案](docs/PLAYWRIGHT_CREDENTIALS.md) | Playwright 登录态导出、API Key 持久化 |
 | [SDK 使用指南](docs/CLAUDE_AGENT_SDK_GUIDE.md) | Claude Agent SDK 接口参考 |
 
@@ -130,9 +134,9 @@ your-project/
     tasks.json              # 任务列表 + 状态
     session_result.json     # 上次 session 结果
     progress.json           # 会话历史 + 成本
-    tests.json              # 验证记录
     test.env                # 测试凭证（可选）
     .runtime/
+      harness_state.json    # Harness 状态（session 计数等）
       logs/                 # 每 session 独立日志
 ```
 

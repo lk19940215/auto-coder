@@ -6,6 +6,7 @@ A **long-running autonomous coding Agent Harness**: built on Claude Agent SDK, u
 
 ### Highlights
 
+- **Harness Lifecycle Management**: Unified Harness class encapsulating environment setup, task scheduling, validation, rollback, and push — with AI-driven JSON self-healing repair
 - **Hook Prompt Injection**: JSON-configured rules inject contextual guidance during tool calls — extend rules without code changes ([mechanism details](../design/hook-mechanism.md))
 - **Long-running Auto-coding Loop**: Multi-session orchestration + countdown activity monitoring + git rollback & retry — Agent codes continuously for hours ([guard details](../design/session-guard.md))
 - **Configuration-driven**: Supports Claude official, Coding Plan multi-model routing, DeepSeek, or any Anthropic-compatible API
@@ -33,19 +34,20 @@ claude-coder run "Implement user registration and login"
 
 | Command | Description |
 |---------|-------------|
-| `claude-coder setup` | Interactive configuration (model, MCP, safety limits) |
+| `claude-coder setup` | Interactive configuration (model, MCP, safety limits, auto-review) |
+| `claude-coder init` | Initialize project environment (scan tech stack, generate profile) |
+| `claude-coder plan "requirement"` | Generate plan document |
+| `claude-coder plan -r [file]` | Generate plan from requirements file |
+| `claude-coder plan --planOnly` | Generate plan only, no task decomposition |
+| `claude-coder plan -i "requirement"` | Interactive mode, allow model to ask questions |
 | `claude-coder run [requirement]` | Auto-coding loop |
 | `claude-coder run --max 1` | Single session |
-| `claude-coder run --dry-run` | Preview mode |
-| `claude-coder init` | Initialize project environment |
-| `claude-coder add "instruction"` | Append tasks |
-| `claude-coder add -r [file]` | Append tasks from requirements file |
-| `claude-coder add "..." --model M` | Append tasks with specific model |
+| `claude-coder run --dry-run` | Preview mode (view task queue) |
+| `claude-coder simplify [focus]` | Code review and simplification |
 | `claude-coder auth [url]` | Export Playwright login state |
-| `claude-coder validate` | Manually validate last session |
 | `claude-coder status` | View progress and costs |
 
-**Options**: `--max N` limit sessions (default 50), `--pause N` pause every N sessions for confirmation.
+**Options**: `--max N` limit sessions (default 50), `--pause N` pause every N sessions for confirmation, `--model M` specify model.
 
 ## How It Works
 
@@ -55,24 +57,27 @@ Requirement ─→ Project scan ─→ Task decomposition ─→ Coding loop
                                                  ┌─────┴─────┐
                                                  │  Session N  │
                                                  │  Claude SDK │
-                                                 │  6-step flow│
+                                                 │  3-step flow│
                                                  └─────┬─────┘
                                                        │
                                                   Harness validate
+                                                  (with AI repair)
                                                        │
-                                             Pass → next task
+                                             Pass → simplify? → push → next task
                                              Fail → git rollback + retry
 ```
 
-Each session, the agent autonomously follows 6 steps: restore context → env check → pick task → code → test → commit.
+Each session, the agent autonomously follows 3 steps: **implement** (task context injected by harness, code the feature) → **verify** (lightweight tests by category) → **wrap up** (git commit + write session_result.json).
+
+After each session, Harness validates `session_result.json` + git progress. If JSON is corrupted, AI auto-repairs it via `repair.js`. If validation fails, code is rolled back and retried.
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
+| [Architecture](../design/ARCHITECTURE.md) | Core design rules, Harness class responsibilities, module relations, prompt injection |
 | [Hook Injection Mechanism](../design/hook-mechanism.md) | SDK Hook research, GuidanceInjector matching pipeline, config format, side effects |
 | [Session Guard](../design/session-guard.md) | Abort strategy, countdown activity detection, tool running state, anti-flooding |
-| [Architecture](ARCHITECTURE.md) | Core design rules, module responsibilities, prompt injection architecture |
 | [Playwright Credentials](PLAYWRIGHT_CREDENTIALS.md) | Test cookies and API key management |
 | [SDK Guide](CLAUDE_AGENT_SDK_GUIDE.md) | Claude Agent SDK API reference |
 
@@ -114,9 +119,9 @@ your-project/
     tasks.json              # Task list + status
     session_result.json     # Last session result
     progress.json           # Session history + costs
-    tests.json              # Verification records
     test.env                # Test credentials (optional)
     .runtime/
+      harness_state.json    # Harness state (session count, etc.)
       logs/                 # Per-session logs
 ```
 

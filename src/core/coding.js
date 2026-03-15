@@ -1,6 +1,6 @@
 "use strict";
 
-const { runSession } = require("./base");
+const { runSession } = require("./session");
 const { buildQueryOptions } = require("./query");
 const { buildSystemPrompt, buildCodingContext } = require("./prompts");
 const { extractResult } = require("../common/logging");
@@ -11,7 +11,7 @@ const { log } = require("../common/config");
  */
 async function runCodingSession(sessionNum, opts = {}) {
   const taskId = opts.taskId || "unknown";
-  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const dateStr = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12);
 
   return runSession("coding", {
     opts,
