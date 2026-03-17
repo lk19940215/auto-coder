@@ -1,18 +1,18 @@
 {
   "name": "claude-coder-website",
-  "detected_at": "2026-03-13T22:30:00",
-  "project_type": "new",
+  "detected_at": "2026-03-17T19:00:00",
+  "project_type": "existing",
   "tech_stack": {
-    "languages": ["javascript", "vue"],
+    "languages": ["typescript", "javascript"],
     "backend": {
       "framework": "none",
-      "runtime": "node",
-      "entry": "none"
+      "runtime": "none",
+      "entry": "index.html"
     },
     "frontend": {
-      "framework": "vue",
+      "framework": "react",
       "bundler": "vite",
-      "dir": "."
+      "dir": "src"
     },
     "database": "none",
     "package_managers": ["npm"]
@@ -22,14 +22,7 @@
       "name": "frontend-dev",
       "command": "npm run dev",
       "port": 5173,
-      "health_check": "http://localhost:5173",
-      "cwd": "."
-    },
-    {
-      "name": "frontend-preview",
-      "command": "npm run preview",
-      "port": 4173,
-      "health_check": "http://localhost:4173",
+      "health_check": "http://localhost:5173/",
       "cwd": "."
     }
   ],
@@ -39,38 +32,26 @@
   },
   "existing_docs": [
     "README.md",
-    "requirements.md",
-    ".claude/CLAUDE.md"
+    ".claude/CLAUDE.md",
+    "requirements.md"
   ],
   "has_tests": false,
   "has_docker": false,
   "mcp_tools": {
     "playwright": true
   },
-  "custom_init": ["npm install"],
+  "custom_init": [],
   "scan_files_checked": [
-    "requirements.md",
     "package.json",
-    "vite.config.js",
-    "index.html",
     "README.md",
-    "src/main.js",
-    "src/App.vue",
-    "src/router/index.js",
-    "src/assets/styles/global.css",
-    "src/components/common/Header.vue",
-    "src/components/common/Footer.vue",
-    "src/components/home/HeroSection.vue",
-    "src/components/home/FeaturesSection.vue",
-    "src/components/home/HowItWorks.vue",
-    "src/components/home/CTASection.vue",
-    "src/pages/Home.vue",
-    "src/pages/Features.vue",
-    "src/pages/QuickStart.vue",
-    "src/pages/Docs.vue",
-    "src/pages/Examples.vue",
-    ".github/workflows/deploy.yml",
-    ".claude/CLAUDE.md",
-    "public/robots.txt"
+    "requirements.md",
+    "vite.config.ts",
+    ".mcp.json",
+    ".claude-coder/.env",
+    "tailwind.config.js",
+    "tsconfig.json",
+    "index.html",
+    "src/App.tsx",
+    "src/pages/Home.tsx"
   ]
 }
