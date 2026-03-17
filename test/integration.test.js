@@ -184,7 +184,7 @@ test('loadConfig 默认值正确', () => {
 
   assert.strictEqual(config.provider, 'claude');
   assert.strictEqual(config.timeoutMs, 3000000);
-  assert.strictEqual(config.mcpToolTimeout, 30000);
+  assert.strictEqual(config.stallTimeout, 600);
 });
 
 test('buildEnvVars 正确构建环境变量', () => {

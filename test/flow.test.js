@@ -159,10 +159,6 @@ test('run 无 tasks.json 时应该报错并提示运行 plan', () => {
     existing_docs: ['README.md']
   }));
 
-  const recipesDir = path.join(path.dirname(profilePath), 'recipes');
-  fs.mkdirSync(recipesDir, { recursive: true });
-  fs.writeFileSync(path.join(recipesDir, 'placeholder.md'), '');
-
   if (fs.existsSync(tasksPath)) fs.unlinkSync(tasksPath);
 
   try {

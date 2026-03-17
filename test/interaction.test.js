@@ -373,11 +373,11 @@ test('AssetManager 类导出正确', () => {
 test('AssetManager registry 包含所有模板和数据文件', () => {
   const { assets } = require('../src/common/assets');
   const templates = [
-    'agentProtocol', 'scanProtocol', 'addGuide', 'codingUser',
-    'scanUser', 'addUser', 'testRule', 'guidance',
-    'playwright', 'bashProcess', 'requirements',
+    'coreProtocol', 'codingSystem', 'planSystem', 'scanSystem', 'goSystem',
+    'codingUser', 'scanUser', 'planUser',
+    'testRule', 'guidance', 'playwright', 'bashProcess', 'requirements',
   ];
-  const dataFiles = ['env', 'tasks', 'progress', 'sessionResult', 'profile', 'tests', 'testEnv', 'playwrightAuth'];
+  const dataFiles = ['env', 'tasks', 'progress', 'sessionResult', 'profile', 'testEnv', 'playwrightAuth'];
   const runtimeFiles = ['browserProfile'];
   const rootFiles = ['mcpConfig'];
 
@@ -412,8 +412,8 @@ test('AssetManager dir() 返回正确目录', () => {
 
 test('AssetManager read 读取 bundled 内容', () => {
   const { assets } = require('../src/common/assets');
-  const content = assets.read('agentProtocol');
-  assert(content.length > 100, '应读取到 agentProtocol.md 内容');
+  const content = assets.read('coreProtocol');
+  assert(content.length > 100, '应读取到 coreProtocol.md 内容');
 });
 
 test('AssetManager render 渲染模板变量', () => {
@@ -430,7 +430,7 @@ test('AssetManager render 空变量折叠空行', () => {
 
 test('AssetManager exists 检查文件存在', () => {
   const { assets } = require('../src/common/assets');
-  assert(assets.exists('agentProtocol'), 'agentProtocol 应存在');
+  assert(assets.exists('coreProtocol'), 'coreProtocol 应存在');
   assert(!assets.exists('nonexistent_file_xyz'), '不存在的文件应返回 false');
 });
 
@@ -454,7 +454,7 @@ test('AssetManager deployAll 部署并跳过已存在', () => {
 
 test('AssetManager clearCache 清除缓存', () => {
   const { assets } = require('../src/common/assets');
-  assets.read('agentProtocol');
+  assets.read('coreProtocol');
   assert(assets.cache.size > 0, '读取后应有缓存');
   assets.clearCache();
   assert.strictEqual(assets.cache.size, 0, '清除后缓存应为空');
@@ -529,8 +529,8 @@ test('simplify FEATURE_MAP 包含 INTERACTION', () => {
     require.resolve('../src/core/hooks'),
     'utf8'
   );
-  assert(hooksSrc.includes("simplify: [FEATURES.STALL, FEATURES.INTERACTION]"),
-    'simplify 应包含 INTERACTION feature');
+  assert(hooksSrc.includes("simplify: [FEATURES.STOP, FEATURES.STALL, FEATURES.INTERACTION]"),
+    'simplify 应包含 STOP, STALL, INTERACTION features');
 });
 
 test('simplify 不限制 maxTurns', () => {
