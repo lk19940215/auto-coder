@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 
 interface NavItem {
   id: string;
@@ -18,7 +18,7 @@ interface SidebarNavProps {
  * 侧边栏导航组件
  * 支持动画延迟和激活状态样式
  */
-const SidebarNav: React.FC<SidebarNavProps> = ({ items, activeId, onItemClick }) => {
+const SidebarNav: React.FC<SidebarNavProps> = memo(({ items, activeId, onItemClick }) => {
   return (
     <nav>
       <ul className="space-y-2">
@@ -37,6 +37,8 @@ const SidebarNav: React.FC<SidebarNavProps> = ({ items, activeId, onItemClick })
       </ul>
     </nav>
   );
-};
+});
+
+SidebarNav.displayName = 'SidebarNav';
 
 export default SidebarNav;

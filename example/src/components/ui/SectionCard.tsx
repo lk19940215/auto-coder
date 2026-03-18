@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 
 // Base and variant styles - moved outside component to avoid recreation
 const BASE_CLASSES = 'rounded-xl p-6 transition-all duration-300';
@@ -19,7 +19,7 @@ interface SectionCardProps {
   hover?: boolean;
 }
 
-const SectionCard: React.FC<SectionCardProps> = ({
+const SectionCard: React.FC<SectionCardProps> = memo(({
   children,
   variant = 'default',
   className = '',
@@ -34,6 +34,8 @@ const SectionCard: React.FC<SectionCardProps> = ({
       {children}
     </section>
   );
-};
+});
+
+SectionCard.displayName = 'SectionCard';
 
 export default SectionCard;

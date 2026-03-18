@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, memo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { GITHUB_REPO_URL } from '../../utils';
 import { GitHubIcon, MenuIcon } from '../ui/Icons';
@@ -11,11 +11,17 @@ const navLinks = [
   { path: '/examples', label: '案例' },
 ];
 
-const Header: React.FC = () => {
+const Header: React.FC = memo(() => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
 
-  const toggleMenu = () => setMobileMenuOpen(!mobileMenuOpen);
+  const toggleMenu = useCallback(() => {
+    setMobileMenuOpen(prev => !prev);
+  }, []);
+
+  const closeMobileMenu = useCallback(() => {
+    setMobileMenuOpen(false);
+  }, []);
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-opacity-90 backdrop-blur-md border-b border-[var(--border-300)] bg-[var(--bg-100)]">
@@ -92,7 +98,7 @@ const Header: React.FC = () => {
                     ? 'text-[var(--text-50)] border-l-2 border-[var(--gradient-start)] pl-3 bg-[var(--bg-200)]'
                     : 'text-[var(--text-200)] hover:text-[var(--text-50)] pl-3'
                 }`}
-                onClick={() => setMobileMenuOpen(false)}
+                onClick={closeMobileMenu}
               >
                 {link.label}
               </Link>
@@ -102,6 +108,8 @@ const Header: React.FC = () => {
       )}
     </header>
   );
-};
+});
+
+Header.displayName = 'Header';
 
 export default Header;

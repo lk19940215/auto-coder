@@ -181,7 +181,7 @@
         "添加 will-change 和 transform 优化动画性能",
         "验证: Lighthouse Performance 评分 > 90"
       ],
-      "status": "pending",
+      "status": "done",
       "depends_on": ["feat-010"]
     },
     {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 
 // Variant styles - moved outside component to avoid recreation
 const VARIANT_STYLES = {
@@ -19,7 +19,7 @@ interface FishStepCardProps {
   className?: string;
 }
 
-const FishStepCard: React.FC<FishStepCardProps> = ({
+const FishStepCard: React.FC<FishStepCardProps> = memo(({
   stepNumber,
   title,
   description,
@@ -91,6 +91,8 @@ const FishStepCard: React.FC<FishStepCardProps> = ({
       <div className="mt-6 h-0.5 bg-gradient-to-r from-[var(--fish-gold)] via-[var(--lazy-cyan)] to-transparent opacity-30 rounded-full" />
     </div>
   );
-};
+});
+
+FishStepCard.displayName = 'FishStepCard';
 
 export default FishStepCard;

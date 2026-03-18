@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { MenuIcon, CloseIcon } from './Icons';
 
 interface MobileSidebarProps {
@@ -18,7 +18,7 @@ interface MobileSidebarProps {
  * 移动端侧边栏组件
  * 包含汉堡菜单按钮、遮罩层和侧边栏内容
  */
-const MobileSidebar: React.FC<MobileSidebarProps> = ({
+const MobileSidebar: React.FC<MobileSidebarProps> = memo(({
   isOpen,
   onClose,
   onToggle,
@@ -60,6 +60,8 @@ const MobileSidebar: React.FC<MobileSidebarProps> = ({
       </aside>
     </>
   );
-};
+});
+
+MobileSidebar.displayName = 'MobileSidebar';
 
 export default MobileSidebar;
