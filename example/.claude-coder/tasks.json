@@ -200,7 +200,7 @@
         "【P2】测试主题切换：检查深色模式正常",
         "验证: 所有 P0 测试通过，截图保存到 assets/screenshots/"
       ],
-      "status": "pending",
+      "status": "done",
       "depends_on": ["feat-005"]
     },
     {

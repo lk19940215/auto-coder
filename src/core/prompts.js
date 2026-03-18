@@ -139,7 +139,7 @@ function buildMemoryHint() {
   if (!sr?.session_result) return '';
   const base = `上次会话 ${sr.session_result}（${sr.status_before || '?'} → ${sr.status_after || '?'}）。`;
   if (!sr.notes || !sr.notes.trim()) return base;
-  return `${base}遗留: ${sr.notes.slice(0, 200)}`;
+  return `${base}遗留: ${sr.notes}`;
 }
 
 function buildServiceHint(maxSessions) {
