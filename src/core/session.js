@@ -164,21 +164,30 @@ class Session {
     const messages = [];
     const querySession = sdk.query({ prompt, options: queryOpts });
 
-    for await (const message of querySession) {
-      if (this._isStalled()) {
-        log('warn', '停顿超时，中断消息循环');
-        break;
-      }
-      messages.push(message);
-      this._logMessage(message);
+    try {
+      for await (const message of querySession) {
+        if (this._isStalled()) {
+          log('warn', '停顿超时，中断消息循环');
+          break;
+        }
+        messages.push(message);
+        this._logMessage(message);
 
-      if (opts.onMessage) {
-        const action = opts.onMessage(message, messages);
-        if (action === 'break') break;
+        if (opts.onMessage) {
+          const action = opts.onMessage(message, messages);
+          if (action === 'break') break;
+        }
+      }
+    } catch (err) {
+      if (this._isStalled()) {
+        log('warn', 'SDK 会话因停顿超时中断');
+      } else {
+        throw err;
       }
     }
 
     const sdkResult = extractResult(messages);
+    this.logStream.write(`\n[SDK_RESULT] ${JSON.stringify(sdkResult, null, 2)}\n\n`);
     const cost = sdkResult?.total_cost_usd || null;
     const usage = sdkResult?.usage || null;
     const turns = sdkResult?.num_turns || null;
@@ -196,7 +205,7 @@ class Session {
       console.log('----- SESSION END -----');
       log('info', `session 统计: ${summary}`);
       if (this.logStream?.writable) {
-        this.logStream.write(`[SESSION_STATS] ${summary}\n`);
+        this.logStream.write(`[SESSION_INFO] ${summary}\n`);
       }
     }
 

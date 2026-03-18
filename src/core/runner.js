@@ -308,8 +308,17 @@ async function onFailure(session, { headBefore, taskId, sessionResult, validateR
   });
 }
 
-async function onStall(session, { headBefore, taskId, sessionResult, consecutiveFailures }) {
-  log('warn', `Session ${session} 因停顿超时中断，跳过校验直接重试`);
+async function onStall(session, { headBefore, taskId, sessionResult, consecutiveFailures, config }) {
+  log('warn', `Session ${session} 因停顿超时中断，尝试校验任务是否已完成...`);
+
+  const validateResult = await validate(config, headBefore, taskId);
+
+  if (!validateResult.fatal) {
+    log('ok', `停顿超时但任务已完成，按成功处理${validateResult.hasWarnings ? ' (有警告)' : ''}`);
+    return onSuccess(session, { taskId, sessionResult, validateResult });
+  }
+
+  log('warn', '停顿超时且校验未通过，回滚重试');
   return _handleRetryOrSkip(session, {
     headBefore, taskId, sessionResult, consecutiveFailures,
     result: 'stalled', reason: '停顿超时',
@@ -420,7 +429,11 @@ async function executeRun(config, opts = {}) {
     });
 
     if (sessionResult.stalled) {
-      state = await onStall(session, { headBefore, taskId, sessionResult, ...state });
+      state = await onStall(session, { headBefore, taskId, sessionResult, config, ...state });
+      if (state.consecutiveFailures === 0) {
+        if (shouldSimplify(config)) await tryRunSimplify(config);
+        tryPush(projectRoot);
+      }
       continue;
     }
 

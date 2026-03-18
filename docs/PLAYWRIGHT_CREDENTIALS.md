@@ -79,6 +79,8 @@ claude-coder auth
 
 ## 快速配置流程
 
+### 方式一：自动配置（推荐）
+
 ```bash
 # Step 1: 初始化配置（选择工具和模式）
 claude-coder setup
@@ -94,6 +96,41 @@ claude-coder auth [URL]
 2. 生成/更新 `.mcp.json`（Claude Code SDK 读取此文件启动 MCP 服务）
 3. 更新 `.gitignore`
 4. 设置 `.env` 中 `WEB_TEST_TOOL` 变量
+
+### 方式二：手动安装（claude mcp add）
+
+如果不使用 `claude-coder` 管理配置，可以直接通过 `claude mcp add` 命令手动注册 MCP：
+
+**Playwright MCP:**
+
+```bash
+# 安装 Chromium 浏览器引擎
+npx playwright install chromium
+
+# 注册 MCP（基础模式）
+claude mcp add playwright -- npx @playwright/mcp@latest
+
+# 或 persistent 模式（保留登录态）
+claude mcp add playwright -- npx @playwright/mcp@latest --user-data-dir=.claude-coder/.runtime/browser-profile
+
+# 或 isolated 模式（从快照加载）
+claude mcp add playwright -- npx @playwright/mcp@latest --isolated --storage-state=.claude-coder/playwright-auth.json
+
+# 或 extension 模式（连接真实浏览器，需安装 Playwright MCP Bridge 扩展）
+claude mcp add playwright -- npx @playwright/mcp@latest --extension
+```
+
+**Chrome DevTools MCP:**
+
+```bash
+# 无需预安装，npx 自动下载
+claude mcp add chrome-devtools -- npx -y chrome-devtools-mcp@latest --autoConnect
+
+# 前置条件：
+#   1. Node.js v20.19+
+#   2. Chrome 144+
+#   3. chrome://inspect/#remote-debugging 中启用远程调试
+```
 
 ### Step 3：开始使用
 

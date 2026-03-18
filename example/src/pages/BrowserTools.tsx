@@ -126,6 +126,30 @@ const BrowserTools: React.FC = () => {
               </FishStepCard>
             </div>
 
+            {/* Manual Install */}
+            <div className="mt-8">
+              <h3 className="text-heading-3 text-[var(--text-50)] mb-4">手动安装（claude mcp add）</h3>
+              <p className="text-sm text-[var(--text-400)] mb-3">
+                如果不使用 <code className="text-[var(--lazy-cyan)]">claude-coder</code> 管理配置，可以直接注册 MCP：
+              </p>
+              <EnhancedCodeBlock language="bash" title="手动注册 Playwright MCP">{`# 安装 Chromium 浏览器引擎
+npx playwright install chromium
+
+# 基础模式
+claude mcp add playwright -- npx @playwright/mcp@latest
+
+# persistent 模式（保留登录态）
+claude mcp add playwright -- npx @playwright/mcp@latest \\
+  --user-data-dir=.claude-coder/.runtime/browser-profile
+
+# isolated 模式（从快照加载）
+claude mcp add playwright -- npx @playwright/mcp@latest \\
+  --isolated --storage-state=.claude-coder/playwright-auth.json
+
+# extension 模式（连接真实浏览器）
+claude mcp add playwright -- npx @playwright/mcp@latest --extension`}</EnhancedCodeBlock>
+            </div>
+
             {/* Three Modes */}
             <div className="mt-8">
               <h3 className="text-heading-3 text-[var(--text-50)] mb-4">三种模式</h3>
@@ -203,6 +227,19 @@ const BrowserTools: React.FC = () => {
 claude-coder run "分析页面性能并优化"
 # Agent 通过 Chrome DevTools MCP 连接已打开的 Chrome`}</EnhancedCodeBlock>
               </FishStepCard>
+            </div>
+
+            {/* Manual Install */}
+            <div className="mt-8">
+              <h3 className="text-heading-3 text-[var(--text-50)] mb-4">手动安装（claude mcp add）</h3>
+              <p className="text-sm text-[var(--text-400)] mb-3">
+                如果不使用 <code className="text-[var(--lazy-cyan)]">claude-coder</code> 管理配置，可以直接注册 MCP：
+              </p>
+              <EnhancedCodeBlock language="bash" title="手动注册 Chrome DevTools MCP">{`# 无需预安装，npx 自动下载
+claude mcp add chrome-devtools -- npx -y chrome-devtools-mcp@latest --autoConnect
+
+# 验证连接（需 Chrome 已启用远程调试）
+claude-coder auth http://your-app.com`}</EnhancedCodeBlock>
             </div>
 
             {/* Capabilities */}

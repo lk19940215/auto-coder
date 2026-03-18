@@ -3,6 +3,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const http = require('http');
 const { execSync } = require('child_process');
 const { loadConfig, log } = require('../common/config');
 const { assets } = require('../common/assets');
@@ -277,36 +278,91 @@ function authExtension() {
   log('info', '确保 Chrome/Edge 已运行且 Playwright MCP Bridge 扩展已启用');
 }
 
-function authChromeDevTools() {
-  console.log('Chrome DevTools MCP 配置:');
-  console.log('');
-  console.log('  此模式通过 Chrome DevTools Protocol 连接到已打开的 Chrome 浏览器。');
-  console.log('  直接复用浏览器中已有的登录态、扩展和 DevTools 调试能力。');
-  console.log('');
-  console.log('  前置条件:');
-  console.log('  1. Node.js v20.19+（npx 自动下载 chrome-devtools-mcp 包）');
-  console.log('  2. Chrome 144+ 版本');
-  console.log('  3. 打开 chrome://inspect/#remote-debugging 启用远程调试');
-  console.log('  4. 允许传入调试连接');
-  console.log('');
-  console.log('  功能:');
-  console.log('  - 输入自动化: 点击、输入、表单填写');
-  console.log('  - 页面导航: 多页面管理、截图');
-  console.log('  - 性能分析: Trace 录制、Core Web Vitals、Lighthouse 审计');
-  console.log('  - 调试工具: Console 消息、网络请求检查、内存快照');
-  console.log('');
-  console.log(`  注意: 单实例限制，同一时间只能连接一个 Chrome 调试会话。`);
-  console.log(`  如需多实例并行，请配置 Playwright MCP（claude-coder setup）。`);
-  console.log('');
+function getChromeCommand() {
+  if (process.platform === 'win32') {
+    const prefixes = [
+      process.env['PROGRAMFILES(X86)'],
+      process.env.PROGRAMFILES,
+      process.env.LOCALAPPDATA,
+    ].filter(Boolean);
+    for (const prefix of prefixes) {
+      const p = path.join(prefix, 'Google', 'Chrome', 'Application', 'chrome.exe');
+      if (fs.existsSync(p)) return `"${p}"`;
+    }
+    return 'start chrome';
+  }
+  if (process.platform === 'darwin') return 'open -a "Google Chrome" --args';
+  return 'google-chrome';
+}
 
+function checkCdpConnection(port = 9222, timeoutMs = 5000) {
+  return new Promise(resolve => {
+    const req = http.get(`http://127.0.0.1:${port}/json/version`, res => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const info = JSON.parse(data);
+          resolve({ ok: true, browser: info.Browser || 'Chrome', wsUrl: info.webSocketDebuggerUrl || '' });
+        } catch {
+          resolve({ ok: false });
+        }
+      });
+    });
+    req.on('error', () => resolve({ ok: false }));
+    req.setTimeout(timeoutMs, () => { req.destroy(); resolve({ ok: false }); });
+  });
+}
+
+async function authChromeDevTools(url) {
   const mcpPath = assets.path('mcpConfig');
   updateMcpConfig(mcpPath, 'chrome-devtools');
   enableWebTestEnv('chrome-devtools');
 
+  log('ok', '.mcp.json 已配置完成');
   console.log('');
-  log('ok', '配置完成！');
-  log('info', 'Chrome DevTools MCP 使用 autoConnect 模式');
-  log('info', '确保 Chrome 已启动且已在 chrome://inspect 中启用远程调试');
+
+  log('info', '正在检测 Chrome DevTools 连接...');
+  let conn = await checkCdpConnection();
+
+  if (!conn.ok && url) {
+    log('info', '未检测到 Chrome 远程调试实例，尝试启动 Chrome...');
+    const chromeCmd = getChromeCommand();
+    const launchCmd = `${chromeCmd} --remote-debugging-port=9222 "${url}"`;
+    try {
+      const { spawn } = require('child_process');
+      const child = spawn(launchCmd, { shell: true, detached: true, stdio: 'ignore' });
+      child.unref();
+    } catch (err) {
+      log('warn', `Chrome 启动失败: ${err.message}`);
+    }
+
+    for (let i = 0; i < 6; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      conn = await checkCdpConnection();
+      if (conn.ok) break;
+    }
+  }
+
+  console.log('');
+  if (conn.ok) {
+    log('ok', `Chrome DevTools 连接成功: ${conn.browser}`);
+    if (conn.wsUrl) log('info', `WebSocket: ${conn.wsUrl}`);
+    log('ok', '配置验证通过！MCP 可以正常连接 Chrome。');
+  } else {
+    log('warn', '未检测到 Chrome 远程调试实例');
+    console.log('');
+    console.log('  请确保:');
+    console.log('  1. Chrome 144+ 已安装');
+    console.log('  2. 打开 chrome://inspect/#remote-debugging 启用远程调试');
+    console.log('  3. 允许传入调试连接');
+    console.log('');
+    console.log('  或手动启动带远程调试的 Chrome:');
+    const chromeCmd = getChromeCommand();
+    console.log(`    ${chromeCmd} --remote-debugging-port=9222`);
+    console.log('');
+    log('info', '.mcp.json 已配置，Chrome 就绪后 MCP 会自动连接 (autoConnect)');
+  }
 }
 
 async function auth(url) {
@@ -328,9 +384,11 @@ async function auth(url) {
       log('info', '升级后重新运行此命令');
       return;
     }
+    const targetUrl = normalizeUrl(url) || null;
     log('info', '浏览器工具: Chrome DevTools MCP');
+    if (targetUrl) log('info', `目标 URL: ${targetUrl}`);
     console.log('');
-    authChromeDevTools();
+    await authChromeDevTools(targetUrl);
     return;
   }
 

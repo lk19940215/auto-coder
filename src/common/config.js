@@ -21,7 +21,7 @@ function log(level, msg) {
     warn:  `${COLOR.yellow}[WARN]${COLOR.reset} `,
     error: `${COLOR.red}[ERROR]${COLOR.reset}`,
   };
-  console.error(`${tags[level] || ''} ${msg}`);
+  console.error(`${tags[level] || ''} ${msg} \n`);
 }
 
 // --------------- .env parsing ---------------
