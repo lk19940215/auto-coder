@@ -1,5 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import PageLayout from '../components/layout/PageLayout';
+import SectionCard from '../components/ui/SectionCard';
+import EnhancedCodeBlock from '../components/ui/EnhancedCodeBlock';
+import { useMobileSidebar } from '../hooks/useMobileSidebar';
 import { scrollToElement } from '../utils';
 
 const docs = [
@@ -9,149 +13,227 @@ const docs = [
   { id: 'troubleshooting', title: '故障排查' },
 ];
 
+// Menu icon component
+const MenuIcon = () => (
+  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+  </svg>
+);
+
+// Close icon component
+const CloseIcon = () => (
+  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+  </svg>
+);
+
 const Docs: React.FC = () => {
   const [activeDoc, setActiveDoc] = useState('getting-started');
+  const { isOpen, toggle, close } = useMobileSidebar();
 
   const handleNavClick = useCallback((e: React.MouseEvent, id: string) => {
     e.preventDefault();
     setActiveDoc(id);
     scrollToElement(id);
-  }, []);
+    close(); // Close mobile sidebar after navigation
+  }, [close]);
+
+  // Sidebar navigation content (reused for both mobile and desktop)
+  const SidebarNav = () => (
+    <nav>
+      <ul className="space-y-2">
+        {docs.map((item, index) => (
+          <li key={item.id}>
+            <a
+              href={`#${item.id}`}
+              className={`nav-item animate-slide-in-left ${activeDoc === item.id ? 'nav-item-active' : ''}`}
+              style={{ animationDelay: `${index * 0.1}s` }}
+              onClick={(e) => handleNavClick(e, item.id)}
+            >
+              {item.title}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
 
   return (
-    <div className="min-h-screen">
-      <main className="pt-24 pb-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-            {/* Sidebar */}
-            <aside className="lg:col-span-1">
-              <nav className="card sticky top-24">
-                <h3 className="text-[var(--text-50)] font-semibold mb-4 px-2">文档目录</h3>
-                <ul className="space-y-1">
-                  {docs.map((item) => (
-                    <li key={item.id}>
-                      <a
-                        href={`#${item.id}`}
-                        className={`nav-item ${activeDoc === item.id ? 'active' : ''}`}
-                        onClick={(e) => handleNavClick(e, item.id)}
-                      >
-                        {item.title}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </nav>
-            </aside>
+    <PageLayout>
+      {/* Mobile sidebar toggle button */}
+      <button
+        onClick={toggle}
+        className="sidebar-toggle-btn fixed top-20 left-4 z-50 lg:hidden"
+        aria-label="Toggle sidebar"
+      >
+        <MenuIcon />
+      </button>
 
-            {/* Content */}
-            <div className="lg:col-span-3">
-              <h1 className="text-4xl font-bold text-[var(--text-50)] mb-8">文档中心</h1>
+      {/* Mobile sidebar overlay */}
+      {isOpen && (
+        <div
+          className="sidebar-overlay visible lg:hidden"
+          onClick={close}
+        />
+      )}
 
-              <div className="space-y-8">
-                {/* Getting Started */}
-                <section id="getting-started" className="card">
-                  <h2 className="text-2xl font-bold text-[var(--text-50)] mb-4">入门指南</h2>
-                  <p className="text-[var(--text-300)] mb-4 leading-relaxed">
-                    三步即可启动你的第一个自主编码 Agent：安装 → 配置 → 运行。
-                  </p>
-                  <ul className="space-y-2">
-                    <li className="flex items-center gap-2">
-                      <span className="text-[var(--gradient-start)]">→</span>
-                      <Link to="/quick-start" className="text-[var(--primary-400)] hover:underline">安装指南</Link>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="text-[var(--gradient-start)]">→</span>
-                      <span className="text-[var(--text-300)]">模型配置：<code className="text-sm text-[var(--primary-300)]">claude-coder setup</code></span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <span className="text-[var(--gradient-start)]">→</span>
-                      <span className="text-[var(--text-300)]">第一个项目：<code className="text-sm text-[var(--primary-300)]">claude-coder run "你的需求"</code></span>
-                    </li>
-                  </ul>
-                </section>
+      {/* Mobile sidebar */}
+      <aside className={`fixed top-0 left-0 w-[280px] h-screen bg-[var(--bg-100)] border-r border-[var(--border-300)] z-50 overflow-y-auto p-6 transition-transform duration-300 lg:hidden ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-heading-3 text-[var(--text-50)]">文档目录</h3>
+          <button
+            onClick={close}
+            className="p-2 rounded-lg hover:bg-[var(--bg-200)] transition-colors"
+            aria-label="Close sidebar"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+        <SidebarNav />
+      </aside>
 
-                {/* Core Concepts */}
-                <section id="core-concepts" className="card">
-                  <h2 className="text-2xl font-bold text-[var(--text-50)] mb-4">核心概念</h2>
-                  <div className="space-y-5">
-                    <div>
-                      <h3 className="text-lg font-semibold text-[var(--text-50)] mb-1">Hook 注入机制</h3>
-                      <p className="text-[var(--text-300)] leading-relaxed">
-                        在 SDK 工具调用（如 edit_file、run_command）时自动注入上下文提示，
-                        三级匹配粒度灵活控制 AI 行为，无需修改源码。
-                      </p>
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-[var(--text-50)] mb-1">Session 守护</h3>
-                      <p className="text-[var(--text-300)] leading-relaxed">
-                        Harness 持续监控 Agent Session 状态，自动处理超时、中断、无响应。
-                        失败时 git 回滚 + 重试，确保长时间无人值守编码的稳定性。
-                      </p>
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-[var(--text-50)] mb-1">任务分解与编排</h3>
-                      <p className="text-[var(--text-300)] leading-relaxed">
-                        将复杂需求拆分为独立子任务，按依赖关系排序。每个 Session 执行 6 步流程：
-                        恢复上下文 → 环境检查 → 选任务 → 编码 → 测试 → 收尾。
-                      </p>
-                    </div>
-                  </div>
-                </section>
+      {/* Page Header */}
+      <div className="mb-8">
+        <h1 className="text-heading-1 text-[var(--text-50)] mb-4">文档中心</h1>
+        <p className="text-body text-[var(--text-400)]">快速了解 Claude Coder 的完整使用指南</p>
+      </div>
 
-                {/* Commands */}
-                <section id="commands" className="card">
-                  <h2 className="text-2xl font-bold text-[var(--text-50)] mb-4">命令参考</h2>
-                  <div className="space-y-3">
-                    {[
-                      { cmd: 'setup', desc: '交互式配置（模型、MCP、安全限制、自动审查）' },
-                      { cmd: 'init', desc: '初始化项目（扫描技术栈、生成 profile、部署食谱）' },
-                      { cmd: 'go', desc: 'AI 对话式需求收集与方案组装' },
-                      { cmd: 'go "需求"', desc: 'AI 自动分析需求并组装方案' },
-                      { cmd: 'plan "需求"', desc: '生成任务计划方案' },
-                      { cmd: 'run "需求"', desc: '启动自动编码循环' },
-                      { cmd: 'simplify', desc: '代码审查和简化' },
-                      { cmd: 'auth [url]', desc: '导出 Playwright 登录状态' },
-                      { cmd: 'status', desc: '查看进度和成本统计' },
-                    ].map(({ cmd, desc }) => (
-                      <div key={cmd} className="flex items-center gap-4">
-                        <code className="code-block px-3 py-1 text-sm shrink-0 text-white">{cmd}</code>
-                        <span className="text-[var(--text-300)]">{desc}</span>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                {/* Troubleshooting */}
-                <section id="troubleshooting" className="card">
-                  <h2 className="text-2xl font-bold text-[var(--text-50)] mb-4">故障排查</h2>
-                  <div className="space-y-5">
-                    <div>
-                      <h3 className="text-lg font-semibold text-[var(--text-50)] mb-1">余额不足 (Credit balance too low)</h3>
-                      <p className="text-[var(--text-300)] leading-relaxed">
-                        运行 <code className="text-sm text-[var(--primary-300)]">claude-coder setup</code> 重新配置 API Key，或切换至其他模型。
-                      </p>
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-[var(--text-50)] mb-1">中断恢复</h3>
-                      <p className="text-[var(--text-300)] leading-relaxed">
-                        Session 自动保存进度，直接重新运行 <code className="text-sm text-[var(--primary-300)]">claude-coder run</code> 即可从断点继续。
-                      </p>
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-[var(--text-50)] mb-1">长时间无响应</h3>
-                      <p className="text-[var(--text-300)] leading-relaxed">
-                        模型处理复杂任务时可能出现长思考间隔，这是正常行为。
-                        超过阈值后 Harness 自动中断并重试。可通过 <code className="text-sm text-[var(--primary-300)]">SESSION_STALL_TIMEOUT</code> 调整。
-                      </p>
-                    </div>
-                  </div>
-                </section>
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        {/* Desktop Sidebar Navigation */}
+        <aside className="hidden lg:block lg:col-span-1">
+          <div className="sticky top-24">
+            <div className="card p-4">
+              <h3 className="text-caption text-[var(--text-400)] uppercase tracking-wider mb-4">文档导航</h3>
+              <SidebarNav />
             </div>
           </div>
+        </aside>
+
+        {/* Main Content */}
+        <div className="lg:col-span-3 space-y-8">
+          {/* Getting Started */}
+          <SectionCard id="getting-started" variant="default" className="card-hover-enhanced">
+            <h2 className="text-heading-2 text-[var(--text-50)] mb-4">入门指南</h2>
+            <p className="text-body mb-6 leading-relaxed">
+              三步即可启动你的第一个自主编码 Agent：安装 → 配置 → 运行。
+            </p>
+            <ul className="space-y-3">
+              <li className="flex items-center gap-3 animate-slide-in-left" style={{ animationDelay: '0.1s' }}>
+                <span className="text-[var(--gradient-start)]">→</span>
+                <Link to="/quick-start" className="text-[var(--primary-400)] hover:underline">安装指南</Link>
+              </li>
+              <li className="flex items-center gap-3 animate-slide-in-left" style={{ animationDelay: '0.2s' }}>
+                <span className="text-[var(--gradient-start)]">→</span>
+                <span className="text-body">模型配置：</span>
+                <EnhancedCodeBlock language="bash" showLineNumbers={false} className="inline-flex">
+                  claude-coder setup
+                </EnhancedCodeBlock>
+              </li>
+              <li className="flex items-center gap-3 animate-slide-in-left" style={{ animationDelay: '0.3s' }}>
+                <span className="text-[var(--gradient-start)]">→</span>
+                <span className="text-body">第一个项目：</span>
+                <EnhancedCodeBlock language="bash" showLineNumbers={false} className="inline-flex">
+                  claude-coder run "你的需求"
+                </EnhancedCodeBlock>
+              </li>
+            </ul>
+          </SectionCard>
+
+          {/* Core Concepts */}
+          <SectionCard id="core-concepts" variant="default" className="card-hover-enhanced">
+            <h2 className="text-heading-2 text-[var(--text-50)] mb-6">核心概念</h2>
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-heading-3 text-[var(--text-50)] mb-2">Hook 注入机制</h3>
+                <p className="text-body leading-relaxed">
+                  在 SDK 工具调用（如 edit_file、run_command）时自动注入上下文提示，
+                  三级匹配粒度灵活控制 AI 行为，无需修改源码。
+                </p>
+              </div>
+              <div>
+                <h3 className="text-heading-3 text-[var(--text-50)] mb-2">Session 守护</h3>
+                <p className="text-body leading-relaxed">
+                  Harness 持续监控 Agent Session 状态，自动处理超时、中断、无响应。
+                  失败时 git 回滚 + 重试，确保长时间无人值守编码的稳定性。
+                </p>
+              </div>
+              <div>
+                <h3 className="text-heading-3 text-[var(--text-50)] mb-2">任务分解与编排</h3>
+                <p className="text-body leading-relaxed">
+                  将复杂需求拆分为独立子任务，按依赖关系排序。每个 Session 执行 6 步流程：
+                  恢复上下文 → 环境检查 → 选任务 → 编码 → 测试 → 收尾。
+                </p>
+              </div>
+            </div>
+          </SectionCard>
+
+          {/* Commands */}
+          <SectionCard id="commands" variant="default" className="card-hover-enhanced">
+            <h2 className="text-heading-2 text-[var(--text-50)] mb-6">命令参考</h2>
+            <div className="space-y-4">
+              {[
+                { cmd: 'setup', desc: '交互式配置（模型、MCP、安全限制、自动审查）' },
+                { cmd: 'init', desc: '初始化项目（扫描技术栈、生成 profile、部署食谱）' },
+                { cmd: 'go', desc: 'AI 对话式需求收集与方案组装' },
+                { cmd: 'go "需求"', desc: 'AI 自动分析需求并组装方案' },
+                { cmd: 'plan "需求"', desc: '生成任务计划方案' },
+                { cmd: 'run "需求"', desc: '启动自动编码循环' },
+                { cmd: 'simplify', desc: '代码审查和简化' },
+                { cmd: 'auth [url]', desc: '导出 Playwright 登录状态' },
+                { cmd: 'status', desc: '查看进度和成本统计' },
+              ].map(({ cmd, desc }, index) => (
+                <div
+                  key={cmd}
+                  className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 animate-slide-in-left"
+                  style={{ animationDelay: `${index * 0.05}s` }}
+                >
+                  <code className="code-block px-3 py-1.5 text-sm text-white shrink-0">{cmd}</code>
+                  <span className="text-body">{desc}</span>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+
+          {/* Troubleshooting */}
+          <SectionCard id="troubleshooting" variant="default" className="card-hover-enhanced">
+            <h2 className="text-heading-2 text-[var(--text-50)] mb-6">故障排查</h2>
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-heading-3 text-[var(--text-50)] mb-2">余额不足 (Credit balance too low)</h3>
+                <p className="text-body leading-relaxed">
+                  运行{' '}
+                  <code className="text-sm text-[var(--primary-300)] bg-[var(--bg-200)] px-2 py-0.5 rounded">
+                    claude-coder setup
+                  </code>{' '}
+                  重新配置 API Key，或切换至其他模型。
+                </p>
+              </div>
+              <div>
+                <h3 className="text-heading-3 text-[var(--text-50)] mb-2">中断恢复</h3>
+                <p className="text-body leading-relaxed">
+                  Session 自动保存进度，直接重新运行{' '}
+                  <code className="text-sm text-[var(--primary-300)] bg-[var(--bg-200)] px-2 py-0.5 rounded">
+                    claude-coder run
+                  </code>{' '}
+                  即可从断点继续。
+                </p>
+              </div>
+              <div>
+                <h3 className="text-heading-3 text-[var(--text-50)] mb-2">长时间无响应</h3>
+                <p className="text-body leading-relaxed">
+                  模型处理复杂任务时可能出现长思考间隔，这是正常行为。
+                  超过阈值后 Harness 自动中断并重试。可通过{' '}
+                  <code className="text-sm text-[var(--primary-300)] bg-[var(--bg-200)] px-2 py-0.5 rounded">
+                    SESSION_STALL_TIMEOUT
+                  </code>{' '}
+                  调整。
+                </p>
+              </div>
+            </div>
+          </SectionCard>
         </div>
-      </main>
-    </div>
+      </div>
+    </PageLayout>
   );
 };
 

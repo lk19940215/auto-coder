@@ -114,7 +114,7 @@
         "改善内容间距和留白（p-section + space-content）",
         "验证: 所有代码块可复制，文档层次清晰"
       ],
-      "status": "pending",
+      "status": "done",
       "depends_on": ["feat-006"]
     },
     {
