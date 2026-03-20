@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 const { buildSystemPrompt } = require('./prompts');
-const { log } = require('../common/config');
+const { log, printModeBanner } = require('../common/config');
 const { assets } = require('../common/assets');
 const { saveDesignState } = require('./state');
 const { Session } = require('./session');
@@ -216,7 +216,9 @@ async function executeDesign(config, input, opts = {}) {
   if (!fs.existsSync(pagesDir)) fs.mkdirSync(pagesDir, { recursive: true });
 
   const type = resolveType(opts, designDir);
-  log('info', `Design 类型: ${type}`);
+  const isAutoMode = !!input;
+  const designLabel = type === 'fix' ? '修复' : isAutoMode ? '自动' : '对话';
+  printModeBanner('design', `${type} · ${designLabel}`, config?.model);
 
   if (!opts.model || !opts.model.includes('glm-5')) {
     log('info', '提示: design 推荐使用 --model glm-5 获得最佳效果');

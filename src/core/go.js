@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 const { buildSystemPrompt } = require('./prompts');
-const { log } = require('../common/config');
+const { log, printModeBanner } = require('../common/config');
 const { assets } = require('../common/assets');
 const { extractResultText } = require('../common/logging');
 const { loadState, saveState } = require('./state');
@@ -184,8 +184,8 @@ async function executeGo(config, input, opts = {}) {
   }
 
   const isAutoMode = !!(instruction || opts.reqFile);
-  const mode = isAutoMode ? '自动' : '对话';
-  log('info', `Go 模式: ${mode}`);
+  const mode = isAutoMode ? '自动模式' : '对话模式';
+  printModeBanner('go', mode, config?.model);
 
   const ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12);
 

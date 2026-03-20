@@ -226,7 +226,7 @@ test('run --dry-run 预览模式', () => {
     features: [{ id: '1', description: 'Test', status: 'pending' }]
   }));
 
-  const output = execSync(`${CLI} run --max 1 --dry-run`, { encoding: 'utf8' });
+  const output = execSync(`${CLI} run --max 1 --dry-run 2>&1`, { encoding: 'utf8' });
   assert(output.includes('预览模式') || output.includes('DRY-RUN'));
 });
 

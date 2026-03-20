@@ -5,7 +5,7 @@ const path = require('path');
 const os = require('os');
 const readline = require('readline');
 const { buildSystemPrompt, buildPlanPrompt } = require('./prompts');
-const { log } = require('../common/config');
+const { log, printModeBanner } = require('../common/config');
 const { assets } = require('../common/assets');
 const { printStats } = require('../common/tasks');
 const { syncAfterPlan } = require('./state');
@@ -129,9 +129,8 @@ async function executePlan(config, input, opts = {}) {
     throw new Error('用法: claude-coder plan "需求内容"  或  claude-coder plan -r [requirements.md]');
   }
 
-  if (opts.interactive) {
-    log('info', '交互模式已启用，模型可能会向您提问');
-  }
+  const modeLabel = opts.planOnly ? 'planOnly' : opts.interactive ? '交互模式' : '自动模式';
+  printModeBanner('plan', modeLabel, config?.model);
 
   let shouldAutoRun = false;
   if (!opts.planOnly) {

@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { log } = require('../common/config');
+const { log, printModeBanner } = require('../common/config');
 const { assets } = require('../common/assets');
 const { buildSystemPrompt, buildScanPrompt } = require('./prompts');
 const { Session } = require('./session');
@@ -47,10 +47,11 @@ function validateProfile() {
 async function executeScan(config, opts = {}) {
   const maxAttempts = RETRY.SCAN_ATTEMPTS;
 
+  const projectType = hasCodeFiles(opts.projectRoot || assets.projectRoot) ? 'existing' : 'new';
+  printModeBanner('scan', projectType === 'existing' ? '已有项目' : '全新项目', config?.model);
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     log('info', `初始化尝试 ${attempt} / ${maxAttempts} ...`);
-
-    const projectType = hasCodeFiles(opts.projectRoot || assets.projectRoot) ? 'existing' : 'new';
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
     const result = await Session.run('scan', config, {

@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { buildEnvVars, log } = require('../common/config');
+const { buildEnvVars, log, COLOR } = require('../common/config');
 const { Indicator } = require('../common/indicator');
 const { logMessage: baseLogMessage, extractResult, writeSessionSeparator } = require('../common/logging');
 const { createHooks } = require('./hooks');
@@ -12,7 +12,7 @@ const { assets } = require('../common/assets');
  * @typedef {Object} SessionRunOptions
  * @property {string} logFileName - 日志文件名
  * @property {import('fs').WriteStream} [logStream] - 外部日志流（与 logFileName 二选一）
- * @property {number} [sessionNum=0] - 会话编号
+ * @property {number} [sessionNum=1] - 会话编号
  * @property {string} [label=''] - 会话标签
  * @property {(session: Session) => Promise<Object>} execute - 执行回调，接收 session 实例
  */
@@ -72,7 +72,7 @@ class Session {
    * @param {SessionRunOptions} options - 运行选项
    * @returns {Promise<Object>} 包含 exitCode、logFile、stalled 以及 execute 返回值
    */
-  static async run(type, config, { logFileName, logStream, sessionNum = 0, label = '', execute }) {
+  static async run(type, config, { logFileName, logStream, sessionNum = 1, label = '', execute }) {
     await Session.ensureSDK(config);
     const session = new Session(type, config, { logFileName, logStream, sessionNum, label });
     try {
@@ -99,7 +99,7 @@ class Session {
    * @param {number} [options.sessionNum=0]
    * @param {string} [options.label='']
    */
-  constructor(type, config, { logFileName, logStream, sessionNum = 0, label = '' }) {
+  constructor(type, config, { logFileName, logStream, sessionNum = 1, label = '' }) {
     this.config = config;
     this.type = type;
     this.indicator = new Indicator();
@@ -197,20 +197,29 @@ class Session {
     const sessionId = sdkResult?.session_id || null;
 
     if (cost != null || turns != null || sessionId) {
-      const parts = [];
-      if (sessionId) parts.push(`sid: ${sessionId}`);
-      if (turns != null) parts.push(`turns: ${turns}`);
-      if (cost != null) parts.push(`cost: $${cost}`);
+      const fmtTokens = (n) => n >= 10000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+      const fmtCost = (c) => c >= 1 ? `$${c.toFixed(2)}` : `$${c.toFixed(4)}`;
+
+      const cliParts = [];
+      if (sessionId) cliParts.push(`${COLOR.dim}sid:${COLOR.reset} ${sessionId.slice(0, 8)}`);
+      if (turns != null) cliParts.push(`${COLOR.dim}turns:${COLOR.reset} ${turns}`);
+      if (cost != null) cliParts.push(`${COLOR.dim}cost:${COLOR.reset} ${COLOR.yellow}${fmtCost(cost)}${COLOR.reset}`);
       if (usage) {
         const inp = usage.input_tokens || 0;
         const out = usage.output_tokens || 0;
-        parts.push(`tokens: ${inp}+${out}`);
+        cliParts.push(`${COLOR.dim}tokens:${COLOR.reset} ${fmtTokens(inp)}+${fmtTokens(out)}`);
       }
-      const summary = parts.join(', ');
-      console.log('----- SESSION END -----');
-      log('info', `session 统计: ${summary}`);
+      console.error(`${COLOR.dim}─── session end ───${COLOR.reset}`);
+      log('info', `session 统计: ${cliParts.join('  ')}`);
+
+      // 日志文件保留完整精度
+      const logParts = [];
+      if (sessionId) logParts.push(`sid: ${sessionId}`);
+      if (turns != null) logParts.push(`turns: ${turns}`);
+      if (cost != null) logParts.push(`cost: $${cost}`);
+      if (usage) logParts.push(`tokens: ${usage.input_tokens || 0}+${usage.output_tokens || 0}`);
       if (this.logStream?.writable) {
-        this.logStream.write(`[SESSION_INFO] ${summary}\n`);
+        this.logStream.write(`[SESSION_INFO] ${logParts.join(', ')}\n`);
       }
     }
 

@@ -115,9 +115,28 @@ function updateEnvVar(key, value) {
   return true;
 }
 
+/**
+ * @param {string} command - 命令名（run / plan / design / go / simplify / scan）
+ * @param {string} detail  - 右侧附加信息（模式、范围等）
+ * @param {string} [model] - 模型名
+ */
+function printModeBanner(command, detail, model) {
+  const m = model || '';
+  const parts = [COLOR.bold + command + COLOR.reset];
+  if (m)      parts.push(`model: ${m}`);
+  if (detail) parts.push(detail);
+  const inner = parts.join(`  ${COLOR.dim}│${COLOR.reset}  `);
+  console.error('');
+  console.error(`${COLOR.cyan}╔══════════════════════════════════════════════╗${COLOR.reset}`);
+  console.error(`${COLOR.cyan}║${COLOR.reset}  ${inner}`);
+  console.error(`${COLOR.cyan}╚══════════════════════════════════════════════╝${COLOR.reset}`);
+  console.error('');
+}
+
 module.exports = {
   COLOR,
   log,
+  printModeBanner,
   parseEnvFile,
   loadConfig,
   buildEnvVars,

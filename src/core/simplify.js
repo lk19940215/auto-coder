@@ -1,6 +1,6 @@
 'use strict';
 
-const { log } = require('../common/config');
+const { log, printModeBanner } = require('../common/config');
 const { assets } = require('../common/assets');
 const { Session } = require('./session');
 const { execSync } = require('child_process');
@@ -32,6 +32,8 @@ async function executeSimplify(config, focus = null, opts = {}) {
   const projectRoot = assets.projectRoot;
 
   const { range, label } = getSmartDiffRange(projectRoot, n);
+
+  printModeBanner('simplify', label, config?.model);
 
   let diff = '';
   try {

@@ -356,7 +356,7 @@ test('plan.js 交互模式提示文字正确', () => {
     require.resolve('../src/core/plan'),
     'utf8'
   );
-  assert(src.includes('交互模式已启用'), '应有交互模式启用提示');
+  assert(src.includes('交互模式'), '应有交互模式提示');
   assert(src.includes('AskUserQuestion'), 'prompt 约束应提到 AskUserQuestion');
 });
 
