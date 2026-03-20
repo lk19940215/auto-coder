@@ -192,7 +192,7 @@ interface HookOutput {
 
 ```json
 {
-  "file": { "path": "assets/other/web-testing.md", "injectOnce": true },
+  "file": { "path": "assets/web-testing.md", "injectOnce": true },
   "toolTips": {
     "extractor": "browser_(\\w+)",
     "items": { "snapshot": "提示...", "click": "提示..." }
@@ -228,7 +228,7 @@ interface HookOutput {
 
 ### 3.4 内置配置
 
-当前 `templates/guidance.json` 包含两条规则：
+当前 `templates/other/guidance.json` 包含两条规则：
 
 - **浏览器测试引导**：匹配 `mcp__playwright__*` 或 `mcp__chrome-devtools__*`，首次注入 `web-testing.md` 全文，后续按子工具注入操作提示
 - **Bash 进程管理**：仅当 Bash 命令含 `kill/pkill/killall` 时，注入 `bash-process.md`

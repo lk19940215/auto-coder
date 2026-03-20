@@ -158,7 +158,7 @@
         "验证: 测试任务列表渲染",
         "验证: 测试拖拽排序功能正常工作"
       ],
-      "status": "pending",
+      "status": "done",
       "depends_on": ["feat-004", "feat-009"]
     },
     {

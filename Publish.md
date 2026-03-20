@@ -33,11 +33,9 @@ npm pack --dry-run
 # 应包含：
 #   bin/cli.js
 #   src/*.js (10 个模块)
-#   prompts/CLAUDE.md, SCAN_PROTOCOL.md, ADD_GUIDE.md
-#   prompts/coding_user.md, scan_user.md, add_user.md
-#   templates/test_rule.md, requirements.example.md
-#   docs/ARCHITECTURE.md
-#   docs/README.en.md
+#   templates/coding/, templates/plan/, templates/scan/
+#   templates/design/, templates/go/, templates/other/
+#   recipes/
 #   package.json
 #   README.md
 ```

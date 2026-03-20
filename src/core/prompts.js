@@ -251,9 +251,10 @@ function buildPlanPrompt(planPath) {
 
   let testRuleHint = '';
   if (assets.exists('testRule') && assets.exists('mcpConfig')) {
+    const testRulePath = assets.path('testRule');
     testRuleHint = '【浏览器测试规则】项目已配置浏览器测试工具（.mcp.json），' +
-      '`.claude-coder/assets/test_rule.md` 包含测试规范（Smart Snapshot、等待策略、步骤模板等）。' +
-      '前端页面 test 类任务 steps 首步加入 `【规则】阅读 .claude-coder/assets/test_rule.md`。';
+      `\`${testRulePath}\` 包含测试规范（Smart Snapshot、等待策略、步骤模板等）。` +
+      `前端页面 test 类任务 steps 首步加入 \`【规则】阅读 ${testRulePath}\`。`;
   }
 
   let designHint = '';

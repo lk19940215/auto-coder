@@ -36,9 +36,9 @@ cli.js → main() → runner.executeRun(config, opts) → for loop
 
 ```
 buildSystemPrompt('coding')
-├── assets.read('codingSystem')     ← templates/codingSystem.md（置顶，primacy zone）
+├── assets.read('codingSystem')     ← templates/coding/system.md（置顶，primacy zone）
 │   └── 编码身份 + 铁律 + 状态机 + 3 步工作流 + 工具规范 + 禁止清单
-└── assets.read('coreProtocol')     ← templates/coreProtocol.md
+└── assets.read('coreProtocol')     ← templates/other/coreProtocol.md
     └── 全局铁律 + session_result.json 格式 + 全局文件权限表
 ```
 
@@ -46,7 +46,7 @@ buildSystemPrompt('coding')
 
 ```
 buildCodingContext(sessionNum, opts)
-└── assets.render('codingUser', vars)    ← templates/codingUser.md
+└── assets.render('codingUser', vars)    ← templates/coding/user.md
     │
     ├── {{sessionNum}}                   ← 当前 session 编号（固定注入）
     │
@@ -148,18 +148,14 @@ SDK 选项:
 
 ```
 buildSystemPrompt('plan')
-└── planSystem.md + coreProtocol.md
+└── templates/plan/system.md + templates/other/coreProtocol.md
 
 buildPlanPrompt(planPath)
-└── assets.render('planUser', vars)       ← templates/planUser.md
-    │
-    ├── {{profileContext}}               ← profile.tech_stack
-    │   读取: .claude-coder/project_profile.json
-    │   内容: "项目技术栈: 后端: fastapi, 前端: react"
+└── assets.render('planUser', vars)       ← templates/plan/user.md
     │
     ├── {{taskContext}}                  ← loadTasks() + loadState()
     │   读取: .claude-coder/tasks.json + .runtime/harness_state.json
-    │   内容: "已有 5 个任务...新任务 ID 从 feat-006 开始，priority 从 6 开始"
+    │   内容: "新任务 ID 从 feat-006 开始，priority 从 6 开始。已有 category: ..."
     │
     ├── {{recentExamples}}              ← tasks.features.slice(-3)
     │   内容: 最后 3 个任务的格式示例
@@ -168,12 +164,11 @@ buildPlanPrompt(planPath)
     │
     ├── {{planPath}}                    ← Phase 1 生成的计划文件路径
     │
-    ├── {{addGuide}}                    ← assets.read('addGuide')
-    │   读取: templates/addGuide.md（完整内容嵌入）
-    │   内容: tasks.json 格式 + 字段规范 + 粒度规则 + 验证命令模板
+    ├── {{testRuleHint}}               ← 条件: testRule 存在 且 .mcp.json 存在
+    │   内容: "项目已配置浏览器测试工具，参考 test_rule.md"（路径动态解析）
     │
-    └── {{testRuleHint}}               ← 条件: testRule 存在 且 .mcp.json 存在
-        内容: "项目已配置浏览器测试工具，参考 test_rule.md"
+    └── {{designHint}}                 ← 条件: designMap 存在且有页面
+        内容: 设计稿列表 + .pen 文件路径
 
 SDK 选项:
 ├── permissionMode: 'bypassPermissions'
@@ -199,16 +194,16 @@ cli.js → main() → scan.executeScan(config, opts)
 
 ```
 buildSystemPrompt('scan')
-├── assets.read('scanSystem')       ← templates/scanSystem.md（置顶）
+├── assets.read('scanSystem')       ← templates/scan/system.md（置顶）
 │   └── 扫描身份 + 扫描铁律 + 扫描文件表 + 扫描协议步骤 + profile.json 格式
-└── assets.read('coreProtocol')     ← templates/coreProtocol.md
+└── assets.read('coreProtocol')     ← templates/other/coreProtocol.md
 ```
 
 ### User Prompt 组装
 
 ```
 buildScanPrompt(projectType)
-└── assets.render('scanUser', { projectType })   ← templates/scanUser.md
+└── assets.render('scanUser', { projectType })   ← templates/scan/user.md
     │
     └── {{projectType}}              ← hasCodeFiles() ? 'existing' : 'new'
         内容: "项目类型: existing"
@@ -262,17 +257,16 @@ harness 读取的文件              注入位置              注入条件
 ─────────────────────────────────────────────────────────────
 .claude-coder/.env              SDK env vars          始终
 .claude/CLAUDE.md               SDK settingSources    始终（SDK 自动）
-templates/codingSystem.md       systemPrompt          coding（置顶）
-templates/scanSystem.md         systemPrompt          scan（置顶）
-templates/planSystem.md         systemPrompt          plan（置顶）
-templates/coreProtocol.md       systemPrompt          coding, scan, plan（附后）
-templates/codingUser.md         user prompt           coding
-templates/scanUser.md           user prompt           scan
-templates/addUser.md            user prompt           plan phase 2
-templates/addGuide.md           user prompt           plan phase 2（嵌入）
-templates/guidance.json         hooks                 coding（工具匹配时）
-templates/web-testing.md        hooks                 coding（MCP 工具首次调用）
-templates/bash-process.md       hooks                 coding（kill/taskkill 命令时）
+templates/coding/system.md      systemPrompt          coding（置顶）
+templates/scan/system.md        systemPrompt          scan（置顶）
+templates/plan/system.md        systemPrompt          plan（置顶）
+templates/other/coreProtocol.md systemPrompt          coding, scan, plan（附后）
+templates/coding/user.md        user prompt           coding
+templates/scan/user.md          user prompt           scan
+templates/plan/user.md          user prompt           plan phase 2
+templates/other/guidance.json   hooks                 coding（工具匹配时）
+templates/other/web-testing.md  hooks                 coding（MCP 工具首次调用）
+templates/other/bash-process.md hooks                 coding（kill/taskkill 命令时）
 .claude-coder/project_profile   docsHint              profile.existing_docs 非空时
 .claude-coder/tasks.json        taskContext            始终（结构化注入）
 .claude-coder/session_result    memoryHint            存在时
