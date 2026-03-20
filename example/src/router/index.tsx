@@ -8,6 +8,7 @@ const QuickStart = () => import('../pages/QuickStart');
 const Docs = () => import('../pages/Docs');
 const Examples = () => import('../pages/Examples');
 const BrowserTools = () => import('../pages/BrowserTools');
+const Design = () => import('../pages/Design');
 
 const lazyLoad = (loader: () => Promise<{ default: React.ComponentType }>) => {
   const LazyComponent = React.lazy(loader);
@@ -80,6 +81,14 @@ const router = createHashRouter([
         element: (
           <Suspense fallback={<PageLoading />}>
             {lazyLoad(BrowserTools)}
+          </Suspense>
+        ),
+      },
+      {
+        path: 'design',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            {lazyLoad(Design)}
           </Suspense>
         ),
       },

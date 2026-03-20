@@ -7,10 +7,10 @@ const CTASection: React.FC = () => {
       <div className="max-w-4xl mx-auto text-center">
         <div className="card p-12">
           <h2 className="text-3xl sm:text-4xl font-bold text-[var(--text-50)] mb-4">
-            准备好开始了吗？
+            一行命令，剩下的交给 AI
           </h2>
           <p className="text-lg text-[var(--text-400)] mb-8">
-            几分钟内配置完成，立即体验自主编码 Agent 的强大能力。
+            30 秒配置，数小时自动编码。你的下一个项目，从这里开始。
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -34,12 +34,13 @@ const CTASection: React.FC = () => {
               <span className="ml-2 text-[var(--text-400)] text-sm">Terminal</span>
             </div>
             <div className="terminal-body text-left">
-              <p className="text-[var(--success-500)]">$ claude-coder run "创建个人博客"</p>
-              <p className="text-[var(--text-400)] mt-2">✓ 分析需求...</p>
-              <p className="text-[var(--text-400)]">✓ 生成任务计划 (5 个任务)</p>
-              <p className="text-[var(--text-400)]">✓ 初始化项目配置</p>
-              <p className="text-[var(--text-400)]">✓ 开始编码 Session 1/5</p>
-              <p className="text-[var(--primary-400)] mt-2 animate-pulse">▎ 正在执行...</p>
+              <p className="text-[var(--success-500)]">$ claude-coder design "个人博客"</p>
+              <p className="text-[var(--text-400)] mt-1">✓ 生成 UI 设计稿 (3 页)</p>
+              <p className="text-[var(--success-500)] mt-2">$ claude-coder run</p>
+              <p className="text-[var(--text-400)] mt-1">✓ 分解为 5 个任务</p>
+              <p className="text-[var(--text-400)]">✓ Session 1: 项目脚手架 ✅</p>
+              <p className="text-[var(--text-400)]">✓ Session 2: 首页 + 读取设计 ✅</p>
+              <p className="text-[var(--primary-400)] mt-1 animate-pulse">▸ Session 3: 文章列表...</p>
             </div>
           </div>
         </div>

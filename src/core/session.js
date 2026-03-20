@@ -196,8 +196,9 @@ class Session {
     const turns = sdkResult?.num_turns || null;
     const sessionId = sdkResult?.session_id || null;
 
-    if (cost != null || turns != null) {
+    if (cost != null || turns != null || sessionId) {
       const parts = [];
+      if (sessionId) parts.push(`sid: ${sessionId}`);
       if (turns != null) parts.push(`turns: ${turns}`);
       if (cost != null) parts.push(`cost: $${cost}`);
       if (usage) {

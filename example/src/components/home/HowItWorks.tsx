@@ -4,23 +4,23 @@ import ParticleContainer from '../common/ParticleContainer';
 const steps = [
   {
     number: '1',
-    title: '描述需求',
-    description: '一句话或 requirements.md，用自然语言告诉 AI 你想要什么。',
+    title: '📝 描述需求',
+    description: '一句话或 requirements.md，自然语言告诉 AI 你想要什么。go 命令还能交互式引导组装方案。',
   },
   {
     number: '2',
-    title: '智能分解',
-    description: 'AI 自动扫描项目技术栈，将需求拆分为可执行任务并按依赖排序。',
+    title: '🎨 生成设计',
+    description: 'design 命令自动生成 .pen UI 设计稿，包含配色、组件、布局规范。编码时 AI 自动参考。',
   },
   {
     number: '3',
-    title: '持续编码',
-    description: 'Agent 多 Session 循环编码，生成代码、处理依赖、运行测试，自动 git commit。',
+    title: '📋 智能分解',
+    description: 'AI 扫描项目技术栈，将需求拆分为可执行任务并按依赖排序，生成 tasks.json。',
   },
   {
     number: '4',
-    title: '验证交付',
-    description: '每个 Session 自动验证功能，失败则 git 回滚重试，通过即产出可用代码。',
+    title: '🔄 编码循环',
+    description: 'Agent 多 Session 循环：编码 → 测试 → 提交 → 定期审查优化。失败自动回滚重试。',
   },
 ];
 
@@ -34,7 +34,7 @@ const HowItWorks: React.FC = () => {
               工作原理
             </h2>
             <p className="text-lg text-[var(--text-400)] max-w-2xl mx-auto">
-              四步完成从需求到交付的完整流程
+              从需求到设计到代码，四步全自动交付
             </p>
           </div>
         </ParticleContainer>

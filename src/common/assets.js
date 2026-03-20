@@ -11,30 +11,36 @@ const BUNDLED_RECIPES_DIR = path.join(__dirname, '..', '..', 'recipes');
 // kind: 'runtime'  — .claude-coder/.runtime/ 目录，无缓存
 // kind: 'root'     — 项目根目录，无缓存
 const REGISTRY = new Map([
-  // System Prompt Templates (per session type)
-  ['coreProtocol',   { file: 'coreProtocol.md',            kind: 'template' }],
-  ['codingSystem',   { file: 'codingSystem.md',            kind: 'template' }],
-  ['planSystem',     { file: 'planSystem.md',              kind: 'template' }],
-  ['scanSystem',     { file: 'scanSystem.md',              kind: 'template' }],
-  ['goSystem',       { file: 'goSystem.md',                kind: 'template' }],
+  // Go templates
+  ['goSystem',       { file: ['go', 'system.md'],           kind: 'template' }],
+
+  // Plan templates
+  ['planSystem',     { file: ['plan', 'system.md'],         kind: 'template' }],
+  ['planUser',       { file: ['plan', 'user.md'],           kind: 'template' }],
+
+  // Coding templates
+  ['codingSystem',   { file: ['coding', 'system.md'],       kind: 'template' }],
+  ['codingUser',     { file: ['coding', 'user.md'],         kind: 'template' }],
+
+  // Scan templates
+  ['scanSystem',     { file: ['scan', 'system.md'],         kind: 'template' }],
+  ['scanUser',       { file: ['scan', 'user.md'],           kind: 'template' }],
+
+  // Design templates
   ['designBase',     { file: ['design', 'base.md'],         kind: 'template' }],
   ['designSystem',   { file: ['design', 'system.md'],       kind: 'template' }],
   ['designFixSystem',{ file: ['design', 'fixSystem.md'],    kind: 'template' }],
   ['designInit',     { file: ['design', 'init.md'],         kind: 'template' }],
-
-  // User Prompt Templates
-  ['codingUser',     { file: 'codingUser.md',              kind: 'template' }],
-  ['scanUser',       { file: 'scanUser.md',                kind: 'template' }],
-  ['planUser',       { file: 'planUser.md',                kind: 'template' }],
   ['designUser',     { file: ['design', 'user.md'],         kind: 'template' }],
   ['designFixUser',  { file: ['design', 'fixUser.md'],      kind: 'template' }],
 
-  // Other Templates
-  ['testRule',       { file: 'test_rule.md',               kind: 'template' }],
-  ['guidance',       { file: 'guidance.json',              kind: 'template' }],
-  ['webTesting',     { file: 'web-testing.md',              kind: 'template' }],
-  ['bashProcess',    { file: 'bash-process.md',            kind: 'template' }],
-  ['requirements',   { file: 'requirements.example.md',    kind: 'template' }],
+  // Shared / other templates
+  ['coreProtocol',   { file: ['other', 'coreProtocol.md'],  kind: 'template' }],
+  ['testRule',       { file: ['other', 'test_rule.md'],     kind: 'template' }],
+  ['guidance',       { file: ['other', 'guidance.json'],    kind: 'template' }],
+  ['webTesting',     { file: ['other', 'web-testing.md'],   kind: 'template' }],
+  ['bashProcess',    { file: ['other', 'bash-process.md'],  kind: 'template' }],
+  ['requirements',   { file: ['other', 'requirements.example.md'], kind: 'template' }],
 
   // Data files (.claude-coder/)
   ['env',            { file: '.env',                       kind: 'data' }],

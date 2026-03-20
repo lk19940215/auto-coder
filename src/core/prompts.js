@@ -162,6 +162,27 @@ function buildServiceHint(maxSessions) {
     : '连续模式：收尾时不要停止后台服务，保持服务运行以便下个 session 继续使用。';
 }
 
+// --------------- Design Hint ---------------
+
+function buildDesignHint(task) {
+  if (!needsWebTools(task)) return '';
+  if (!assets.exists('designMap')) return '';
+
+  const map = assets.readJson('designMap', null);
+  if (!map || !map.pages) return '';
+
+  const pages = Object.entries(map.pages);
+  if (pages.length === 0) return '';
+
+  const designDir = assets.dir('design');
+  let hint = `【设计稿参考】项目已有 UI 设计稿（design_map.json: ${assets.path('designMap')}）：\n`;
+  for (const [name, info] of pages) {
+    hint += `  - ${name}: ${info.description || ''} → ${path.join(designDir, info.pen)}\n`;
+  }
+  hint += '涉及 UI 的任务可先 Read 对应 .pen 文件了解设计意图。';
+  return hint;
+}
+
 // --------------- Context Builders ---------------
 
 function _resolveTask(taskId) {
@@ -193,6 +214,7 @@ function buildCodingContext(sessionNum, opts = {}) {
     webTestHint: buildWebTestHint(config, task),
     memoryHint: buildMemoryHint(),
     serviceHint: buildServiceHint(opts.maxSessions || 50),
+    designHint: buildDesignHint(task),
   });
 }
 
@@ -234,12 +256,28 @@ function buildPlanPrompt(planPath) {
       '前端页面 test 类任务 steps 首步加入 `【规则】阅读 .claude-coder/assets/test_rule.md`。';
   }
 
+  let designHint = '';
+  try {
+    if (assets.exists('designMap')) {
+      const map = assets.readJson('designMap', null);
+      if (map?.pages && Object.keys(map.pages).length > 0) {
+        const designDir = assets.dir('design');
+        designHint = `【设计稿】项目已有 UI 设计稿（${assets.path('designMap')}）：\n`;
+        for (const [name, info] of Object.entries(map.pages)) {
+          designHint += `  - ${name}: ${info.description || ''} → ${path.join(designDir, info.pen)}\n`;
+        }
+        designHint += '涉及 UI 的 task steps 应包含「Read 对应 .pen 设计稿」步骤。';
+      }
+    }
+  } catch { /* ignore */ }
+
   return assets.render('planUser', {
     taskContext,
     recentExamples,
     projectRoot,
     planPath,
     testRuleHint,
+    designHint,
   });
 }
 

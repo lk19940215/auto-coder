@@ -98,8 +98,8 @@ test('AssetManager deployAll 创建 assets 目录并部署文件', () => {
 
   assert(fs.existsSync(assets.dir('assets')), 'assets 目录应该存在');
   assert(deployed.length > 0, '应该有文件被部署');
-  assert(deployed.includes('coreProtocol.md'), '应包含 coreProtocol.md');
-  assert(deployed.includes('guidance.json'), '应包含 guidance.json');
+  assert(deployed.some(f => f.includes('coreProtocol.md')), '应包含 coreProtocol.md');
+  assert(deployed.some(f => f.includes('guidance.json')), '应包含 guidance.json');
 });
 
 test('AssetManager read 可读取模板内容', () => {

@@ -1,6 +1,7 @@
 import React from 'react';
 import HeroSection from '../components/home/HeroSection';
 import FeaturesSection from '../components/home/FeaturesSection';
+import PainPoints from '../components/home/PainPoints';
 import HowItWorks from '../components/home/HowItWorks';
 import CTASection from '../components/home/CTASection';
 
@@ -10,6 +11,7 @@ const Home: React.FC = () => {
       <main>
         <HeroSection />
         <FeaturesSection />
+        <PainPoints />
         <HowItWorks />
         <CTASection />
       </main>

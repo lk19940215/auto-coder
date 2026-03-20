@@ -13,16 +13,18 @@
 
 ### Step 1: 识别结构
 
-- 如果需求涉及还原已有页面 → Read 页面入口文件，识别所有子组件
+- **有代码项目** → Read 页面入口文件，识别所有子组件；**新项目** → 根据需求描述规划 Section
 - 列出 Section 清单（如：`Header → Hero → Features → HowItWorks → CTA → Footer`）
 - 识别跨页面复用组件（Header/Footer）→ 放入 system.lib.pen
-- 识别弹窗/浮层/状态变体（Modal/Loading/Error）→ 作为独立 frame 放在主页面右侧（x: 主页面宽度 + 100）
+- 识别附属状态（弹窗、步骤流程、加载态、错误态、空态等）→ 每个状态作为独立 frame，放在主页面右侧（x: 主页面宽度 + 100），命名 `{page}-modal-xxx` / `{page}-step-N` / `{page}-state-xxx`
 
-### Step 2: 逐 Section 还原（核心！每次只处理一个 Section）
+### Step 2: 逐 Section 设计（核心！每次只处理一个 Section）
 
 **对每个 Section，依次执行：**
 
-**A. Read 源码**：每次只 Read 一个组件文件
+**A. 获取内容**：
+- **有代码项目**：Read 对应组件文件，提取真实文案（禁止虚构）
+- **新项目**：根据需求描述撰写文案
 
 **B. 输出布局分析**（必须以文字形式输出，不可跳过）：
 ```
@@ -32,25 +34,23 @@
 卡片网格: layout: "vertical", width: "fill_container", gap: 32
   → 行1: horizontal, gap: 32, width: "fill_container"
     → 3个卡片: width: "fill_container"
-  → 行2: horizontal, gap: 32, width: "fill_container"
-    → 3个卡片: width: "fill_container"
 ```
 
-**C. 提取文案**：从源码中提取真实文字，禁止虚构，内容中的双引号必须替换为 `「」` 或转义 `\"`
-
-**D. 反查检查**（对照格式规范逐项验证）：
+**C. 反查检查**（对照格式规范逐项验证）：
 - [ ] 多行子元素容器设了 `layout: "vertical"` 吗？
 - [ ] 子元素用 `fill_container` 时，所有祖先 frame 都有确定宽度吗？
 - [ ] 描述文字设了 `textGrowth: "fixed-width"` + `width` 吗？
 - [ ] 是否用了 margin 等非法属性？（必须用 gap/padding 替代）
 - [ ] 只用了白名单内的属性吗？
 - [ ] 跨文件 descendants key 用了 `sys:` 前缀吗？
+- [ ] content 中的双引号替换为 `「」` 或 `\"` 了吗？
 
 ### Step 3: 组装输出
 
 1. 所有 Section 的 JSON 按顺序放入 page-root 的 children
 2. **page-root 和各 Section 不要写死 height**，让 Pencil 根据内容自动计算（只给 page-root 设 width: 1440）
-3. 先写 system.lib.pen → 再写 pages/xxx.pen → 最后写 design_map.json
+3. 附属状态 frame 放在 page-root 之后（同级 children），各自有独立 x/y
+4. 先写 system.lib.pen → 再写 pages/xxx.pen → 最后写 design_map.json
 
 ### Step 4: 确认与调整
 

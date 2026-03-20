@@ -44,16 +44,30 @@ function resolveType(opts, designDir) {
 
 // ─── Prompt Builders ─────────────────────────────────────
 
+function hasProjectCode(root) {
+  const markers = ['package.json', 'pyproject.toml', 'requirements.txt', 'Cargo.toml', 'go.mod', 'pom.xml'];
+  const dirs = ['src', 'lib', 'app', 'frontend', 'web', 'client', 'pages'];
+  for (const m of markers) { if (fs.existsSync(path.join(root, m))) return true; }
+  for (const d of dirs) {
+    const p = path.join(root, d);
+    if (fs.existsSync(p) && fs.statSync(p).isDirectory()) return true;
+  }
+  return false;
+}
+
 function buildProjectContext() {
   const root = assets.projectRoot;
-  let ctx = '';
+  const hasCode = hasProjectCode(root);
+  let ctx = `### 项目类型\n${hasCode ? '已有代码项目（设计时应 Read 源码还原真实内容）' : '全新项目（无现有代码，根据需求从零设计）'}\n- 项目根路径: ${root}\n\n`;
 
-  const pkgPath = path.join(root, 'package.json');
-  if (fs.existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-      ctx += `### 项目信息\n- name: ${pkg.name || '未定义'}\n- description: ${pkg.description || '未定义'}\n- 项目根路径: ${root}\n\n`;
-    } catch { /* ignore */ }
+  if (hasCode) {
+    const pkgPath = path.join(root, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+        ctx += `### 项目信息\n- name: ${pkg.name || '未定义'}\n- description: ${pkg.description || '未定义'}\n\n`;
+      } catch { /* ignore */ }
+    }
   }
 
   return ctx;

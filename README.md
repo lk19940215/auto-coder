@@ -1,224 +1,236 @@
 # Claude Coder
 
-**中文** | [English](docs/README.en.md)
+**中文** | [English](docs/README.en.md) | [在线文档](https://lk19940215.github.io/claude-coder/#/quick-start)
 
-一个**长时间自运行的自主编码 Agent Harness**：基于 Claude Agent SDK，通过 Hook 提示注入引导模型行为，倒计时活跃度监控保障稳定运行，多 session 编排实现一句话需求到完整项目的全自动交付。
+> 🚀 **一句话需求 → 完整项目。AI 编码数小时，你只需一行命令。**
 
-### 亮点
+**觉得好用？回来点个 ⭐ 吧！** 你的 Star 是我持续维护的最大动力。
 
-- **Session 生命周期管理**：Session 类封装 SDK 管理、query 执行、hooks、indicator 全生命周期，runner 编排循环含 AI 驱动的 JSON 自愈修复
-- **Hook 提示注入**：通过 JSON 配置在工具调用时向模型注入上下文引导，零代码修改即可扩展规则（[机制详解](design/hook-mechanism.md)）
-- **长时间自循环编码**：多 session 编排 + 倒计时活跃度监控 + git 回滚重试，Agent 可持续编码数小时不中断（[守护机制](design/session-guard.md)）
-- **配置驱动**：支持 Claude 官方、Coding Plan 多模型路由、DeepSeek 等任意 Anthropic 兼容 API
+```bash
+claude-coder run "用 React + Express 做一个带登录的 Todo 应用"
+```
+
+```
+✓ 项目扫描完成
+✓ 分解为 8 个任务
+▸ Session 1/8: 搭建项目脚手架 .......... done ✅
+▸ Session 2/8: 实现用户注册/登录 ........ done ✅
+▸ Session 3/8: Todo CRUD ................ done ✅
+  ...
+✓ 全部任务完成，8 次提交已推送 🎉
+```
+
+你下一行命令，Claude Coder 拆需求、写代码、跑测试、提交 Git，**循环执行直到交付**。中间卡住了？自动回滚重试。JSON 损坏了？AI 自修复。你只需要等通知。
 
 ---
 
-## 快速上手
+## 💡 你是不是也遇到过这些问题？
+
+### 🎨 "我不会设计 UI，做出来的页面又丑又乱"
+
+> 你是后端出身，或者独立开发者，没有设计师搭档。每次做前端页面都在找模板、抄样式，结果还是不满意。
+
+**✨ Claude Coder 的解法：**
 
 ```bash
-# 前置：安装 Claude Agent SDK
-npm install -g @anthropic-ai/claude-agent-sdk
+claude-coder design "后台管理系统：用户管理、数据看板、系统设置"
+```
 
-# 安装
+AI 自动生成专业的 `.pen` UI 设计稿 → 完整的配色、字体、组件规范 → 编码阶段 AI **自动参考设计稿还原 UI** 🎯
+
+### 😤 "AI 写的代码和设计稿差了十万八千里"
+
+> 用了 AI 编码工具，代码能跑，但 UI 还原度惨不忍睹。颜色、间距、布局全凭 AI 想象。
+
+**✨ Claude Coder 的解法：**
+
+设计文件通过 `design_map.json` 索引 → 编码时 AI 自动读取对应 `.pen` 设计文件 → 提取颜色、间距、组件结构 → **像素级还原设计意图** 🎯
+
+### 💥 "AI 编码工具总是中途崩、半途而废"
+
+> 用过其他 AI 编码工具，写了几个文件就卡住了、报错了、或者把之前的代码覆盖了。每次都要手动介入。
+
+**✨ Claude Coder 的解法：**
+
+```
+失败 → 🔄 自动回滚到上一个好的提交
+再试 → 🛠️ AI 自修复损坏的 JSON
+又失败 → ⏭️ 自动跳过，继续下一个任务
+```
+
+多 Session 编排 + 活跃度监控，**Agent 连续编码数小时不中断** ⚡
+
+### 🧹 "AI 写的代码越堆越乱，没人 Review"
+
+> AI 编码工具产出大量代码，但没有人审查质量。冗余逻辑、重复代码越积越多，最后不敢改。
+
+**✨ Claude Coder 的解法：**
+
+```
+Session 3 完成 ✅ → 🧹 自动审查最近代码变更
+发现冗余 → 重构优化 → 自动提交 style: auto simplify
+Session 4 继续 ▸
+```
+
+每隔 N 个 session 自动触发 AI 代码审查（`simplify`），审查累积变更、消除冗余、优化结构，**编码和审查一体化** 🎯
+
+### 🤹 "一个人要干前端、后端、测试、部署"
+
+> 独立开发者或者小团队，一个人要搞定所有环节。
+
+**✨ Claude Coder 的解法：**
+
+```
+📝 需求描述  →  🎨 UI 设计  →  📋 任务分解  →  💻 编码实现  →  ✅ 测试验证  →  📦 Git 提交
+```
+
+**全流程自动化**，你只需要描述你想要什么。
+
+---
+
+## 🔗 完整工作流
+
+```
+  📝 需求输入                                         🎉 最终交付
+     │                                                    ▲
+     ▼                                                    │
+ ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────────────────┐
+ │ 🎨      │    │ 📋      │    │ 🔍      │    │ 🔄 run (循环)        │
+ │ design  │ →  │  plan   │ →  │  init   │ →  │  ┌──────────────┐   │
+ │ UI 设计 │    │ 分解任务 │    │ 扫描项目 │    │  │ Session N    │   │
+ │ .pen    │    │ tasks   │    │ profile │    │  │ 💻 编码       │   │
+ └─────────┘    └─────────┘    └─────────┘    │  │ ✅ 验证       │   │
+     │                                         │  │ 📦 提交       │   │
+     └──── 📄 design_map.json ─────────────→  │  └──────┬───────┘   │
+                                               │         │           │
+                                               │  每 N 次 → 🧹 审查  │
+                                               │  失败   → 🔄 回滚   │
+                                               └─────────────────────┘
+```
+
+**关键链路：design → plan → run → simplify 全程贯通。** 设计稿通过 `design_map.json` 索引，编码阶段 AI 自动参考。每隔 N 个成功 session 自动触发代码审查，编码和质量保障一体化。
+
+---
+
+## ⚡ 30 秒上手
+
+```bash
+# 1️⃣ 安装
+npm install -g @anthropic-ai/claude-agent-sdk
 npm install -g claude-coder
 
-# 配置模型
+# 2️⃣ 配置（交互式，选模型 + API）
 claude-coder setup
 
-# 进入项目目录
+# 3️⃣ 跑起来
 cd your-project
-
-# 初始化项目（扫描技术栈、生成 profile）
 claude-coder init
-
-# 开始自动编码
 claude-coder run "实现用户注册和登录功能"
 ```
 
-## 命令列表
+就这么简单。
+
+---
+
+## 🏆 核心能力
+
+| | 能力 | 说明 |
+|---|------|------|
+| 📝 | **需求 → 代码** | 一句话或需求文档输入，自动分解任务、逐个编码实现 |
+| 🎨 | **AI 生成 UI 设计** | `design` 命令生成 `.pen` 设计稿，编码时 AI 自动参考 |
+| 🔄 | **长时间自运行** | 多 Session 编排 + 活跃度监控，连续编码数小时不中断 |
+| 🛡️ | **自愈与容错** | 校验失败自动回滚，损坏文件 AI 修复，连续失败自动跳过 |
+| 🧹 | **自动代码审查** | 每 N 个 session 自动审查累积变更，消除冗余、优化结构 |
+| 🔌 | **任意模型** | Claude、DeepSeek、GLM、Qwen 或任何兼容 API |
+| ⚙️ | **Hook 提示注入** | JSON 配置注入行为引导，零代码扩展 AI 规则 |
+
+---
+
+## 📖 命令速查
 
 | 命令 | 说明 |
 |------|------|
-| `claude-coder setup` | 交互式配置（模型、MCP、安全限制、自动审查） |
-| `claude-coder init` | 初始化项目环境（扫描技术栈、生成 profile） |
-| `claude-coder init --deploy-templates` | 部署模板和食谱到项目目录（可自定义） |
-| `claude-coder plan "需求"` | 生成计划方案 |
-| `claude-coder plan -r [file]` | 从需求文件生成计划 |
-| `claude-coder plan --planOnly` | 仅生成计划文档，不分解任务 |
-| `claude-coder plan -i "需求"` | 交互模式，允许模型提问 |
-| `claude-coder go` | AI 对话式需求收集与方案组装 |
-| `claude-coder go "需求"` | AI 自动分析需求并组装方案 |
-| `claude-coder go -r file` | 从文件读取需求并自动组装 |
-| `claude-coder design` | AI 对话式 UI 设计 |
-| `claude-coder design "需求"` | AI 自动生成 UI 设计（.pen 文件） |
-| `claude-coder design --reset` | 重置设计状态 |
-| `claude-coder run [需求]` | 自动编码循环 |
-| `claude-coder run --max 1` | 单次执行 |
-| `claude-coder run --dry-run` | 预览模式（查看任务队列） |
-| `claude-coder simplify [focus]` | 代码审查和简化 |
-| `claude-coder auth [url]` | 配置浏览器测试工具 / 导出登录状态 |
-| `claude-coder status` | 查看进度和成本 |
+| `setup` | 🔧 交互式配置（模型、MCP、安全限制） |
+| `init` | 🔍 初始化项目（扫描技术栈、生成 profile） |
+| `go [需求]` | 💬 AI 驱动的需求收集与方案组装 |
+| `plan "需求"` | 📋 生成计划并分解任务 |
+| `design [需求]` | 🎨 AI 生成 UI 设计（`.pen` 文件） |
+| `design --type fix` | 🛠️ 修复不合规的设计文件 |
+| `run [需求]` | 🚀 自动编码循环 |
+| `simplify [focus]` | 🧹 代码审查和简化 |
+| `auth [url]` | 🔐 配置浏览器测试工具 |
+| `status` | 📊 查看进度和成本 |
 
-**选项**：`--max N` 限制 session 数（默认 50），`--pause N` 每 N 个 session 暂停确认，`--model M` 指定模型。
+**常用选项**：`--max N` 限制 session 数 / `--pause N` 每 N 个暂停确认 / `--dry-run` 预览 / `--model M` 指定模型
 
-## 工作原理
+---
 
-```
-需求输入 ─→ 项目扫描 ─→ 任务分解 ─→ 编码循环
-                                       │
-                                 ┌──────┴──────┐
-                                 │  Session N   │
-                                 │  Claude SDK  │
-                                 │  3 步流程    │
-                                 └──────┬──────┘
-                                        │
-                                   runner 校验
-                                   (含 AI 自愈)
-                                        │
-                              通过 → simplify? → push → 下一个任务
-                              失败 → git 回滚 + 重试
-```
+## 🤖 模型推荐
 
-每个 session 内，Agent 自主执行 3 步：**实现**（任务上下文由 prompt 注入，编码实现） → **验证**（按 category 选最轻量测试） → **收尾**（git commit + 写 session_result.json）。
-
-Runner 在 session 结束后自动校验 `session_result.json` + git 进度。校验失败时 AI 自动尝试修复损坏的 JSON 文件（`repair.js`），仍失败则回滚代码并重试。
-
-## 机制文档
-
-| 文档 | 说明 |
-|------|------|
-| [技术架构](design/ARCHITECTURE.md) | 核心设计规则、Session 类职责、模块关系、Prompt 注入架构 |
-| [Hook 注入机制](design/hook-mechanism.md) | SDK Hook 调研、GuidanceInjector 三级匹配、配置格式、副作用评估 |
-| [Session 守护机制](design/session-guard.md) | 中断策略、倒计时活跃度检测、工具运行状态追踪、防刷屏 |
-| [Go 指令流程](design/go-flow.md) | AI 驱动的需求组装、食谱系统、与 plan 衔接 |
-| [UI 设计流程](design/ui-design-flow.md) | design 命令架构、.pen 格式、与 plan/run 联动方案 |
-| [浏览器测试工具](docs/PLAYWRIGHT_CREDENTIALS.md) | Playwright MCP / Chrome DevTools MCP 对比、安装、凭证管理 |
-| [SDK 使用指南](docs/CLAUDE_AGENT_SDK_GUIDE.md) | Claude Agent SDK 接口参考 |
-
-## 使用场景
-
-**新项目**：`claude-coder run "用 Express + React 做 Todo 应用"` — 自动搭建脚手架、分解任务、逐个实现。
-
-**已有项目**：`claude-coder run "新增头像上传功能"` — 先扫描现有代码和技术栈，再增量开发。
-
-**需求文档驱动**：在项目根目录创建 `requirements.md`，运行 `claude-coder plan -r requirements.md` 分解任务后 `claude-coder run` 执行。
-
-**AI 驱动需求组装**：`claude-coder go "用户管理页面"` — AI 扫描内置食谱库，自动组装完整需求方案，一键进入 plan 分解任务。支持对话模式 (`go`) 逐步引导非技术人员。
-
-**AI 生成 UI 设计**：`claude-coder design "用户管理后台"` — AI 自动生成 `.pen` 格式的 UI 设计文件，支持迭代调整。生成的设计文件可用 Pencil 可视化查看，编码阶段 AI 自动读取设计作为参考。详见 [UI 设计流程](design/ui-design-flow.md)。
-
-**自动测试 + 凭证持久化**：`claude-coder auth http://localhost:3000` — 导出浏览器登录态，Agent 测试时自动使用。详见 [浏览器测试工具指南](docs/PLAYWRIGHT_CREDENTIALS.md)。
-
-## 浏览器测试工具
-
-支持两种 MCP 浏览器测试工具，通过 `WEB_TEST_TOOL` 环境变量切换：
-
-| 维度 | Playwright MCP | Chrome DevTools MCP |
-|------|---------------|---------------------|
-| **维护方** | 微软 | Google |
-| **核心优势** | 25+ 自动化工具，多实例并行 | 连接已打开 Chrome，调试能力强 |
-| **多实例** | 支持 | 不支持（单实例，多开请用 Playwright） |
-| **安装依赖** | `npx playwright install chromium` | Node.js v20.19+ / Chrome 144+ |
-| **凭证方案** | persistent 模式复用登录态 | 直接复用已打开 Chrome 的登录态 |
-| **适合场景** | CI/CD、多并行测试、需要 Chromium 隔离 | 本地开发、调试、利用已有 Chrome 环境 |
-
-### 安装步骤
-
-```bash
-# Playwright MCP（推荐）
-claude-coder setup          # → 选择「Playwright MCP」→ 选择模式
-npx playwright install chromium
-claude-coder auth http://your-app.com   # 导出登录态
-
-# Chrome DevTools MCP（需 Node.js v20.19+）
-claude-coder setup          # → 选择「Chrome DevTools MCP」
-# 打开 Chrome → chrome://inspect/#remote-debugging → 启用远程调试
-claude-coder auth           # 配置 .mcp.json
-```
-
-### 常见问题
-
-**Q: Playwright 和 Chrome DevTools 该选哪个？**
-A: 如果你需要多实例并行测试或 CI/CD 集成，选 Playwright MCP。如果你只需要本地调试、想复用已打开 Chrome 的登录态和扩展，选 Chrome DevTools MCP。
-
-**Q: Chrome DevTools MCP 报 `chrome-devtools-mcp` 安装失败？**
-A: 确保 Node.js ≥ v20.19。nvm 用户执行 `nvm alias default 22 && nvm use 22`，然后重新安装 `npm install -g @anthropic-ai/claude-code`。
-
-**Q: Playwright 浏览器启动后白屏或超时？**
-A: 运行 `npx playwright install chromium` 确保浏览器已安装。persistent 模式下检查 `.claude-coder/.runtime/browser-profile/` 目录是否存在。
-
-**Q: 切换工具后需要重新认证吗？**
-A: 不需要。`claude-coder setup` 切换时自动更新 `.env` 和 `.mcp.json`。之前的认证数据（如 browser-profile）保留，切回时直接可用。
-
-**Q: 两个工具可以同时启用吗？**
-A: 不可以。`.mcp.json` 中同时只保留一个工具的配置，切换时自动替换。
-
-详见 [浏览器测试工具完整文档](docs/PLAYWRIGHT_CREDENTIALS.md)。
-
-## 模型支持
-
-| 提供商 | 说明 |
-|--------|------|
-| 默认 | Claude 官方模型，使用系统登录态 |
-| Coding Plan | 自建 API，推荐的多模型路由配置 |
-| API | DeepSeek 或其他 Anthropic 兼容 API |
-
-## 建议配置
-
-### 长时间自运行 Agent（最稳）
-
+**长时间自运行（最稳定）**
 ```bash
 ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5
 ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3-coder-next
-ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3-coder-plus
 ANTHROPIC_MODEL=kimi-k2.5
 ```
 
-### 自用 Claude Code（最强）
-
+**自用（最强）**
 ```bash
 ANTHROPIC_DEFAULT_OPUS_MODEL=qwen3-max-2026-01-23
 ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3-coder-next
-ANTHROPIC_DEFAULT_HAIKU_MODEL=qwen3-coder-plus
 ANTHROPIC_MODEL=glm-5
 ```
 
-## 项目结构
+---
+
+## 📚 深入了解
+
+| 文档 | 说明 |
+|------|------|
+| [🏗️ 技术架构](design/ARCHITECTURE.md) | Session 类、模块关系、Prompt 注入 |
+| [🪝 Hook 机制](design/hook-mechanism.md) | 三级匹配、配置格式 |
+| [🛡️ Session 守护](design/session-guard.md) | 倒计时检测、状态追踪 |
+| [💬 Go 指令](design/go-flow.md) | 需求组装、食谱系统 |
+| [🎨 UI 设计流程](design/ui-design-flow.md) | design 命令、与编码联动 |
+| [🌐 浏览器测试](docs/PLAYWRIGHT_CREDENTIALS.md) | Playwright / Chrome DevTools |
+| [📖 SDK 参考](docs/CLAUDE_AGENT_SDK_GUIDE.md) | Claude Agent SDK 接口 |
+
+---
+
+<details>
+<summary>📁 项目结构</summary>
 
 ```
 your-project/
-  .claude-coder/              # 运行时数据（gitignored）
+  .claude-coder/
     .env                    # 模型配置
     project_profile.json    # 项目扫描结果
     tasks.json              # 任务列表 + 状态
-    session_result.json     # 上次 session 结果
-    progress.json           # 会话历史 + 成本
-    test.env                # 测试凭证（可选）
-    go/                     # go 指令输出的方案文件
-    design/                 # UI 设计文件（.pen 格式）
+    design/                 # UI 设计文件
       design_map.json       # 设计映射表
-      system.pen            # 设计规范（配色/字体/组件）
-      pages/                # 页面设计
-    recipes/                # 食谱库（--deploy-templates 时从内置模板部署，可选）
+      pages/                # 页面设计（.pen）
+    go/                     # go 指令输出方案
+    recipes/                # 食谱库（可选）
     .runtime/
-      harness_state.json    # 运行状态（session 计数等）
-      logs/                 # 每 session 独立日志
+      harness_state.json    # 运行状态
+      logs/                 # session 日志
 ```
 
-## 常见问题
+</details>
 
-**"Credit balance is too low"**：运行 `claude-coder setup` 重新配置 API Key。
+## ❓ FAQ
 
 **中断恢复**：直接重新运行 `claude-coder run`，从上次中断处继续。
 
-**长时间无响应**：模型处理复杂任务时可能出现长思考间隔（indicator 显示黄色"工具执行中"或红色"无响应"），这是正常行为。超过阈值后自动中断并重试。通过 `claude-coder setup` 的安全限制配置或 `.env` 中 `SESSION_STALL_TIMEOUT=秒数` 调整。
+**跳过任务**：将 `tasks.json` 中该任务的 `status` 改为 `done`。
 
-**跳过任务**：将 `.claude-coder/tasks.json` 中该任务的 `status` 改为 `done`。
+**长时间无响应**：超过阈值后自动中断并重试。通过 `claude-coder setup` 调整超时。
 
-## 参考文章
+---
 
-[Anthropic: Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)
+---
 
-## License
 
-MIT
+📖 [Anthropic: Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)
+
+MIT License

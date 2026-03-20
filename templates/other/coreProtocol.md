@@ -27,3 +27,4 @@
 | `.claude-coder/project_profile.json` | 项目元数据（技术栈、服务等） | 只读（scan 时可创建） |
 | `.claude-coder/session_result.json` | 本次会话结构化输出 | 覆盖写入 |
 | `.claude-coder/progress.json` | 跨会话记忆日志（harness 维护） | 只读 |
+| `.claude-coder/design/` | UI 设计稿目录（design_map.json + .pen 文件） | 只读（涉及 UI 任务时参考） |

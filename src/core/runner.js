@@ -370,8 +370,6 @@ async function executeRun(config, opts = {}) {
   const dryRun = opts.dryRun || false;
   const maxSessions = opts.max || 50;
   const pauseEvery = opts.pause ?? 0;
-  const continueSession = opts.continue ?? false;
-
   printBanner(dryRun);
 
   printStats();
@@ -427,7 +425,7 @@ async function executeRun(config, opts = {}) {
       consecutiveFailures: state.consecutiveFailures,
       maxSessions,
       lastValidateLog: state.lastFailReason,
-      continue: continueSession || session > 1,
+      continue: true,
     });
 
     if (sessionResult.stalled) {

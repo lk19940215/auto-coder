@@ -23,7 +23,7 @@ async function executeRepair(config, filePath, opts = {}) {
 
       async execute(session) {
         const queryOpts = session.buildQueryOptions(opts);
-        await session.runQuery(prompt, queryOpts);
+        await session.runQuery(prompt, queryOpts, { continue: true });
         log('ok', `AI 修复 ${fileName} 完成`);
         return {};
       },

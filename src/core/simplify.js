@@ -59,7 +59,7 @@ async function executeSimplify(config, focus = null, opts = {}) {
       const queryOpts = session.buildQueryOptions(opts);
       queryOpts.disallowedTools = ['askUserQuestion'];
 
-      await session.runQuery(prompt, queryOpts);
+      await session.runQuery(prompt, queryOpts, { continue: true });
       log('ok', '代码审查完成');
 
       return {};

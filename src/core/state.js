@@ -60,9 +60,9 @@ function selectNextTask(taskData) {
     .sort((a, b) => (a.priority || 999) - (b.priority || 999));
   if (pending.length > 0) return pending[0];
 
-  const inProgress = features.filter(f => f.status === 'in_progress')
+  const active = features.filter(f => f.status === 'in_progress' || f.status === 'testing')
     .sort((a, b) => (a.priority || 999) - (b.priority || 999));
-  return inProgress[0] || null;
+  return active[0] || null;
 }
 
 function isAllDone(taskData) {

@@ -5,12 +5,15 @@ import { GitHubIcon, MenuIcon } from '../ui/Icons';
 
 const navLinks = [
   { path: '/', label: '首页' },
+  { path: '/docs', label: '文档' },
+  { path: '/design', label: '设计工具' },
   { path: '/quick-start', label: '快速上手' },
   { path: '/features', label: '功能特性' },
-  { path: '/docs', label: '文档' },
-  { path: '/examples', label: '案例' },
   { path: '/browser-tools', label: '浏览器工具' },
+  { path: '/examples', label: '案例' },
 ];
+
+const DEMO_URL = '/claude-coder/todo/';
 
 const Header: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -41,12 +44,19 @@ const Header: React.FC = () => {
                 }`}
               >
                 {link.label}
-                {/* Active indicator with gradient border */}
                 {location.pathname === link.path && (
                   <span className="absolute bottom-[-4px] left-0 right-0 h-[2px] bg-gradient-to-r from-[var(--gradient-start)] to-[var(--gradient-end)] rounded-full" />
                 )}
               </Link>
             ))}
+            <a
+              href={DEMO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-medium text-[var(--gradient-start)] hover:text-[var(--gradient-end)] transition-colors"
+            >
+              Todo Demo
+            </a>
           </nav>
 
           {/* Right Buttons */}
@@ -94,6 +104,15 @@ const Header: React.FC = () => {
                 {link.label}
               </Link>
             ))}
+            <a
+              href={DEMO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block py-2 text-sm pl-3 text-[var(--gradient-start)] hover:text-[var(--gradient-end)]"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Todo Demo
+            </a>
           </div>
         </div>
       )}

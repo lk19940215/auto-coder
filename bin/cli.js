@@ -65,9 +65,11 @@ function parseArgs(argv) {
       args.splice(i, 1, args[i].slice(0, eq), args[i].slice(eq + 1));
     }
     switch (args[i]) {
-      case '--max':
-        opts.max = parseInt(args[++i], 10) || 50;
+      case '--max': {
+        const v = parseInt(args[++i], 10);
+        opts.max = isNaN(v) ? 50 : v;
         break;
+      }
       case '--pause':
         { const v = parseInt(args[++i], 10); opts.pause = (v >= 0 && !isNaN(v)) ? v : 5; }
         break;
@@ -78,9 +80,11 @@ function parseArgs(argv) {
         opts.model = args[++i] || null;
         break;
       case '-n':
-      case '--n':
-        opts.n = parseInt(args[++i], 10) || 3;
+      case '--n': {
+        const nv = parseInt(args[++i], 10);
+        opts.n = isNaN(nv) ? 3 : nv;
         break;
+      }
       case '-r': {
         const next = args[i + 1];
         if (next && !next.startsWith('-')) {

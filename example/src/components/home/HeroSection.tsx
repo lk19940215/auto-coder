@@ -112,13 +112,13 @@ const HeroSection: React.FC = () => {
         ))}
 
         <p className="text-xl sm:text-2xl text-[var(--lazy-cyan)] mb-8 max-w-3xl mx-auto font-semibold text-glow animate-wave">
-          摸鱼神器 🐟
+          摸鱼神器 🐟, 一行命令, AI 编码到交付
         </p>
 
         <p className="text-lg text-[var(--text-300)] mb-12 max-w-2xl mx-auto animate-wave-slow leading-relaxed">
-          AI 加班你摸鱼，Claude Coder 帮你搞定一切。
+          你写一句话需求，它拆任务、写代码、跑测试、提交 Git。
           <br />
-          一句话需求 → 完整项目。长时间自运行，自动分解任务、持续编码、验证交付。
+          卡住了自动回滚重试，JSON 坏了 AI 自修复。连续编码数小时，你只需要等通知。
         </p>
 
         {/* CTA Buttons */}
@@ -138,18 +138,22 @@ const HeroSection: React.FC = () => {
         </div>
 
         {/* Stats */}
-        <div className="mt-16 grid grid-cols-1 sm:grid-cols-3 gap-8 max-w-2xl mx-auto">
+        <div className="mt-16 grid grid-cols-1 sm:grid-cols-4 gap-8 max-w-3xl mx-auto">
+          <div className="text-center">
+            <div className="text-3xl font-bold text-[var(--text-50)]">1 行</div>
+            <div className="text-[var(--text-400)] text-sm">命令启动全流程</div>
+          </div>
           <div className="text-center">
             <div className="text-3xl font-bold text-[var(--text-50)]">50+</div>
-            <div className="text-[var(--text-400)] text-sm">Sessions 自动运行</div>
+            <div className="text-[var(--text-400)] text-sm">Session 自动循环</div>
           </div>
           <div className="text-center">
-            <div className="text-3xl font-bold text-[var(--text-50)]">∞</div>
-            <div className="text-[var(--text-400)] text-sm">模型支持</div>
+            <div className="text-3xl font-bold text-[var(--text-50)]">自愈</div>
+            <div className="text-[var(--text-400)] text-sm">失败自动回滚重试</div>
           </div>
           <div className="text-center">
-            <div className="text-3xl font-bold text-[var(--text-50)]">0</div>
-            <div className="text-[var(--text-400)] text-sm">配置即开即用</div>
+            <div className="text-3xl font-bold text-[var(--text-50)]">设计</div>
+            <div className="text-[var(--text-400)] text-sm">AI 生成 UI 到编码</div>
           </div>
         </div>
       </div>

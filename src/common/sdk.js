@@ -43,9 +43,7 @@ async function loadSDK() {
     } catch { /* try next */ }
   }
 
-  log('error', `未找到 ${pkgName}`);
-  log('error', `请先安装：npm install -g ${pkgName}`);
-  process.exit(1);
+  throw new Error(`未找到 ${pkgName}，请先安装：npm install -g ${pkgName}`);
 }
 
 module.exports = { loadSDK };

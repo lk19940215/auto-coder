@@ -7,3 +7,4 @@
 {{planPath}}
 
 {{testRuleHint}}
+{{designHint}}

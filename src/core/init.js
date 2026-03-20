@@ -127,6 +127,15 @@ async function executeInit(config, opts = {}) {
     throw new Error('project_profile.json 读取失败或已损坏');
   }
 
+  const reqDest = path.join(projectRoot, 'requirements.md');
+  if (!fs.existsSync(reqDest)) {
+    const reqTemplate = assets.read('requirements');
+    if (reqTemplate) {
+      fs.writeFileSync(reqDest, reqTemplate, 'utf8');
+      log('ok', '已生成 requirements.md（需求模板）');
+    }
+  }
+
   if (opts.deployTemplates) {
     for (const file of assets.deployAll()) log('ok', `已部署 → .claude-coder/assets/${file}`);
     const recipes = assets.deployRecipes();

@@ -133,6 +133,7 @@ function ensureGitignore(projectRoot) {
     '.claude-coder/*',
     '!.claude-coder/tasks.json',
     '!.claude-coder/project_profile.json',
+    '!.claude-coder/design/',
   ];
   let added = false;
   for (const p of patterns) {
@@ -171,7 +172,7 @@ function killServices(projectRoot) {
   const { assets } = require('./assets');
   const profile = assets.readJson('profile', null);
   if (!profile) return;
-  const ports = (profile.services || []).map(s => s.port).filter(Boolean);
+  const ports = (profile.services || []).map(s => s.port).filter(p => p && /^\d+$/.test(String(p)));
   if (ports.length === 0) return;
 
   for (const port of ports) {

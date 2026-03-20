@@ -88,8 +88,10 @@ class GuidanceInjector {
 
     if (condition.field && condition.pattern !== undefined) {
       const value = this.getFieldValue(input, condition.field);
-      const re = (ruleName && this._compiledConditions?.get(ruleName)) ||
-        new RegExp(condition.pattern, 'i');
+      let re = ruleName && this._compiledConditions?.get(ruleName);
+      if (!re) {
+        try { re = new RegExp(condition.pattern, 'i'); } catch { return false; }
+      }
       return re.test(String(value || ''));
     }
 

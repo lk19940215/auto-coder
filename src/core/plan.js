@@ -26,7 +26,11 @@ function buildPlanOnlySystem(opts = {}) {
 2. ${interactionRule}
 3. 使用 Write 工具将完整计划写入 ~/.claude/plans/ 目录（.md 格式）
 4. 写入后输出标记（独占一行）：PLAN_FILE_PATH: <计划文件绝对路径>
-5. 简要总结计划要点`;
+5. 简要总结计划要点
+
+【关键文件】
+- \`.claude-coder/project_profile.json\` — 项目元数据
+- \`.claude-coder/design/\` — UI 设计稿目录（design_map.json 索引 + .pen 设计文件），存在时应在方案中参考`;
 }
 
 function buildPlanOnlyPrompt(instruction, opts = {}) {
@@ -110,11 +114,6 @@ async function promptAutoRun() {
   return /^[Yy]/.test(answer);
 }
 
-async function promptContinueSession() {
-  const answer = await _askLine('是否沿用当前会话上下文？(y/n) ');
-  return /^[Yy]/.test(answer);
-}
-
 // ─── Main Entry ──────────────────────────────────────────
 
 async function executePlan(config, input, opts = {}) {
@@ -135,12 +134,8 @@ async function executePlan(config, input, opts = {}) {
   }
 
   let shouldAutoRun = false;
-  let shouldContinue = false;
   if (!opts.planOnly) {
     shouldAutoRun = await promptAutoRun();
-    if (shouldAutoRun) {
-      shouldContinue = await promptContinueSession();
-    }
   }
 
   const hookType = opts.interactive ? 'plan_interactive' : 'plan';
@@ -157,7 +152,7 @@ async function executePlan(config, input, opts = {}) {
       const planResult = await _executePlanGen(session, instruction, opts);
 
       if (!planResult.success) {
-        log('error', `\n计划生成失败: ${planResult.reason || planResult.error}`);
+        log('error', `\n计划生成失败: ${planResult.reason}`);
         return { success: false, reason: planResult.reason };
       }
 
@@ -176,6 +171,7 @@ async function executePlan(config, input, opts = {}) {
       const { success } = await session.runQuery(tasksPrompt, queryOpts, { continue: true });
       if (!success) {
         log('warn', '任务分解查询未正常结束');
+        return { success: false, reason: '任务分解未正常完成' };
       }
 
       syncAfterPlan();
@@ -189,9 +185,9 @@ async function executePlan(config, input, opts = {}) {
 
     if (shouldAutoRun) {
       console.log('');
-      log('info', `开始自动执行任务...${shouldContinue ? '（沿用会话上下文）' : ''}`);
+      log('info', '开始自动执行任务（沿用会话上下文）...');
       const { executeRun } = require('./runner');
-      await executeRun(config, { ...opts, continue: shouldContinue });
+      await executeRun(config, { ...opts });
     }
   }
 }
