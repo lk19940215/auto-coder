@@ -56,7 +56,7 @@ function printDryRun(taskData) {
   for (const f of features) {
     const st = f.status || 'unknown';
     const icon = { done: '✓', in_progress: '▸', pending: '○', failed: '✗', testing: '◇' }[st] || '?';
-    const color = { done: COLOR.green, failed: COLOR.red, in_progress: COLOR.blue, testing: COLOR.yellow }[st] || '';
+    const color = { done: COLOR.green, failed: COLOR.red, in_progress: COLOR.blue, testing: COLOR.yellow, pending: COLOR.dim }[st] || '';
     log('info', `  ${color}${icon}${COLOR.reset} [${st.padEnd(11)}] ${f.id} - ${f.description || ''}`);
   }
 }

@@ -10,8 +10,8 @@ const Home: React.FC = () => {
     <div className="min-h-screen hero-bg">
       <main>
         <HeroSection />
-        <FeaturesSection />
         <PainPoints />
+        <FeaturesSection />
         <HowItWorks />
         <CTASection />
       </main>

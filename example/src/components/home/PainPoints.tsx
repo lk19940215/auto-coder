@@ -53,7 +53,7 @@ const PainPoints: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {painPoints.map((item, index) => (
-            <div key={index} className="card card-hover-enhanced overflow-hidden">
+            <div key={index} className={`card card-hover-enhanced overflow-hidden animate-float-delay-${index % 3}`}>
               <div className="flex items-start gap-4 mb-4">
                 <span className="text-3xl flex-shrink-0">{item.emoji}</span>
                 <div>

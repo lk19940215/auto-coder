@@ -216,7 +216,8 @@ async function executeDesign(config, input, opts = {}) {
   if (!fs.existsSync(pagesDir)) fs.mkdirSync(pagesDir, { recursive: true });
 
   const type = resolveType(opts, designDir);
-  const isAutoMode = !!input;
+  const instruction = input || '';
+  const isAutoMode = !!instruction;
   const designLabel = type === 'fix' ? '修复' : isAutoMode ? '自动' : '对话';
   printModeBanner('design', `${type} · ${designLabel}`, config?.model);
 
@@ -235,10 +236,6 @@ async function executeDesign(config, input, opts = {}) {
     await runFixSession(config, designDir, input, opts);
     return;
   }
-
-  const instruction = input || '';
-  const isAutoMode = !!instruction;
-  log('info', `Design 模式: ${isAutoMode ? '自动' : '对话'}`);
 
   const ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12);
 

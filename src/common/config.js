@@ -115,20 +115,23 @@ function updateEnvVar(key, value) {
   return true;
 }
 
+const REPO_URL = 'https://lk19940215.github.io/claude-coder';
+
 /**
  * @param {string} command - 命令名（run / plan / design / go / simplify / scan）
  * @param {string} detail  - 右侧附加信息（模式、范围等）
  * @param {string} [model] - 模型名
  */
 function printModeBanner(command, detail, model) {
-  const m = model || '';
-  const parts = [COLOR.bold + command + COLOR.reset];
-  if (m)      parts.push(`model: ${m}`);
+  const sep = `  ${COLOR.dim}│${COLOR.reset}  `;
+  const parts = [`${COLOR.bold}Claude Coder${COLOR.reset}`, command];
+  if (model)  parts.push(`model: ${model}`);
   if (detail) parts.push(detail);
-  const inner = parts.join(`  ${COLOR.dim}│${COLOR.reset}  `);
+  const inner = parts.join(sep);
   console.error('');
   console.error(`${COLOR.cyan}╔══════════════════════════════════════════════╗${COLOR.reset}`);
   console.error(`${COLOR.cyan}║${COLOR.reset}  ${inner}`);
+  console.error(`${COLOR.cyan}║${COLOR.reset}  ${COLOR.dim}${REPO_URL}${COLOR.reset}`);
   console.error(`${COLOR.cyan}╚══════════════════════════════════════════════╝${COLOR.reset}`);
   console.error('');
 }
