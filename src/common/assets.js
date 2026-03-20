@@ -17,16 +17,17 @@ const REGISTRY = new Map([
   ['planSystem',     { file: 'planSystem.md',              kind: 'template' }],
   ['scanSystem',     { file: 'scanSystem.md',              kind: 'template' }],
   ['goSystem',       { file: 'goSystem.md',                kind: 'template' }],
-  ['designSystem',   { file: 'designSystem.md',            kind: 'template' }],
-  ['designFixSystem',{ file: 'designFixSystem.md',         kind: 'template' }],
-  ['designInit',     { file: 'designInit.md',              kind: 'template' }],
+  ['designBase',     { file: ['design', 'base.md'],         kind: 'template' }],
+  ['designSystem',   { file: ['design', 'system.md'],       kind: 'template' }],
+  ['designFixSystem',{ file: ['design', 'fixSystem.md'],    kind: 'template' }],
+  ['designInit',     { file: ['design', 'init.md'],         kind: 'template' }],
 
   // User Prompt Templates
   ['codingUser',     { file: 'codingUser.md',              kind: 'template' }],
   ['scanUser',       { file: 'scanUser.md',                kind: 'template' }],
   ['planUser',       { file: 'planUser.md',                kind: 'template' }],
-  ['designUser',     { file: 'designUser.md',              kind: 'template' }],
-  ['designFixUser',  { file: 'designFixUser.md',           kind: 'template' }],
+  ['designUser',     { file: ['design', 'user.md'],         kind: 'template' }],
+  ['designFixUser',  { file: ['design', 'fixUser.md'],      kind: 'template' }],
 
   // Other Templates
   ['testRule',       { file: 'test_rule.md',               kind: 'template' }],
@@ -43,7 +44,7 @@ const REGISTRY = new Map([
   ['profile',        { file: 'project_profile.json',       kind: 'data' }],
   ['testEnv',        { file: 'test.env',                   kind: 'data' }],
   ['playwrightAuth', { file: 'playwright-auth.json',       kind: 'data' }],
-  ['designMap',      { file: 'design/design_map.json',     kind: 'data' }],
+  ['designMap',      { file: ['design', 'design_map.json'], kind: 'data' }],
 
   // Runtime files (.claude-coder/.runtime/)
   ['harnessState',   { file: 'harness_state.json',         kind: 'runtime' }],
@@ -79,39 +80,43 @@ class AssetManager {
     this.assetsDir = null;
     this.bundledDir = BUNDLED_DIR;
     this.registry = new Map(REGISTRY);
-    this.cache = new Map();
   }
 
   init(projectRoot) {
     this.projectRoot = projectRoot || process.cwd();
     this.loopDir = path.join(this.projectRoot, '.claude-coder');
     this.assetsDir = path.join(this.loopDir, 'assets');
-    this.cache.clear();
   }
 
   _ensureInit() {
     if (!this.loopDir) this.init();
   }
 
+  _fileSegments(file) {
+    return Array.isArray(file) ? file : [file];
+  }
+
+
   path(name) {
     this._ensureInit();
     const entry = this.registry.get(name);
     if (!entry) return null;
+    const segs = this._fileSegments(entry.file);
     switch (entry.kind) {
-      case 'template': return this._resolveTemplate(entry.file);
-      case 'data':     return path.join(this.loopDir, entry.file);
-      case 'runtime':  return path.join(this.loopDir, '.runtime', entry.file);
-      case 'root':     return path.join(this.projectRoot, entry.file);
+      case 'template': return this._resolveTemplate(segs);
+      case 'data':     return path.join(this.loopDir, ...segs);
+      case 'runtime':  return path.join(this.loopDir, '.runtime', ...segs);
+      case 'root':     return path.join(this.projectRoot, ...segs);
       default:         return null;
     }
   }
 
-  _resolveTemplate(filename) {
+  _resolveTemplate(segments) {
     if (this.assetsDir) {
-      const userPath = path.join(this.assetsDir, filename);
+      const userPath = path.join(this.assetsDir, ...segments);
       if (fs.existsSync(userPath)) return userPath;
     }
-    const bundled = path.join(this.bundledDir, filename);
+    const bundled = path.join(this.bundledDir, ...segments);
     if (fs.existsSync(bundled)) return bundled;
     return null;
   }
@@ -133,18 +138,8 @@ class AssetManager {
     const entry = this.registry.get(name);
     if (!entry) return null;
 
-    if (entry.kind === 'template') {
-      const key = entry.file;
-      if (this.cache.has(key)) return this.cache.get(key);
-      const filePath = this._resolveTemplate(entry.file);
-      if (!filePath) return '';
-      const content = fs.readFileSync(filePath, 'utf8');
-      this.cache.set(key, content);
-      return content;
-    }
-
     const filePath = this.path(name);
-    if (!filePath || !fs.existsSync(filePath)) return null;
+    if (!filePath || !fs.existsSync(filePath)) return entry.kind === 'template' ? '' : null;
     return fs.readFileSync(filePath, 'utf8');
   }
 
@@ -192,17 +187,25 @@ class AssetManager {
     if (!fs.existsSync(this.assetsDir)) {
       fs.mkdirSync(this.assetsDir, { recursive: true });
     }
-    const files = fs.readdirSync(this.bundledDir);
     const deployed = [];
-    for (const file of files) {
-      const dest = path.join(this.assetsDir, file);
-      if (fs.existsSync(dest)) continue;
-      const src = path.join(this.bundledDir, file);
-      try {
-        fs.copyFileSync(src, dest);
-        deployed.push(file);
-      } catch { /* skip */ }
-    }
+    const walk = (srcBase, destBase) => {
+      const entries = fs.readdirSync(srcBase, { withFileTypes: true });
+      for (const entry of entries) {
+        const srcPath = path.join(srcBase, entry.name);
+        const destPath = path.join(destBase, entry.name);
+        if (entry.isDirectory()) {
+          if (!fs.existsSync(destPath)) fs.mkdirSync(destPath, { recursive: true });
+          walk(srcPath, destPath);
+        } else {
+          if (fs.existsSync(destPath)) continue;
+          try {
+            fs.copyFileSync(srcPath, destPath);
+            deployed.push(path.relative(this.assetsDir, destPath));
+          } catch { /* skip */ }
+        }
+      }
+    };
+    walk(this.bundledDir, this.assetsDir);
     return deployed;
   }
 
@@ -243,9 +246,6 @@ class AssetManager {
     return BUNDLED_RECIPES_DIR;
   }
 
-  clearCache() {
-    this.cache.clear();
-  }
 }
 
 const assets = new AssetManager();

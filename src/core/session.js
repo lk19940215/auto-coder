@@ -148,7 +148,7 @@ class Session {
    * 执行一次 SDK 查询，遍历消息流并收集结果
    * @param {string} prompt - 用户提示
    * @param {Object} queryOpts - SDK query 选项（通常来自 buildQueryOptions）
-   * @param {RunQueryOpts} [opts={}] - 额外选项（onMessage 回调）
+   * @param {RunQueryOpts} [opts={}] - 额外选项（onMessage 回调, continue, resume）
    * @returns {Promise<QueryResult>}
    */
   async runQuery(prompt, queryOpts, opts = {}) {
@@ -162,7 +162,10 @@ class Session {
 
     const sdk = Session._sdk;
     const messages = [];
-    const querySession = sdk.query({ prompt, options: queryOpts });
+    const queryPayload = { prompt, options: queryOpts };
+    if (opts.continue) queryPayload.options.continue = true;
+    if (opts.resume) queryPayload.options.resume = opts.resume;
+    const querySession = sdk.query(queryPayload);
 
     try {
       for await (const message of querySession) {
@@ -191,6 +194,7 @@ class Session {
     const cost = sdkResult?.total_cost_usd || null;
     const usage = sdkResult?.usage || null;
     const turns = sdkResult?.num_turns || null;
+    const sessionId = sdkResult?.session_id || null;
 
     if (cost != null || turns != null) {
       const parts = [];
@@ -213,7 +217,7 @@ class Session {
       messages,
       success: sdkResult?.subtype === 'success',
       subtype: sdkResult?.subtype || null,
-      cost, usage, turns,
+      cost, usage, turns, sessionId,
     };
   }
 

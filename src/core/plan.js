@@ -97,15 +97,22 @@ async function _executePlanGen(session, instruction, opts = {}) {
   return { success: false, reason: 'no_path', targetPath: null };
 }
 
-async function promptAutoRun() {
-  if (!process.stdin.isTTY) return false;
+function _askLine(question) {
+  if (!process.stdin.isTTY) return Promise.resolve('');
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise(resolve => {
-    rl.question('任务分解完成后是否自动开始执行？(y/n) ', answer => {
-      rl.close();
-      resolve(/^[Yy]/.test(answer.trim()));
-    });
+    rl.question(question, answer => { rl.close(); resolve(answer.trim()); });
   });
+}
+
+async function promptAutoRun() {
+  const answer = await _askLine('任务分解完成后是否自动开始执行？(y/n) ');
+  return /^[Yy]/.test(answer);
+}
+
+async function promptContinueSession() {
+  const answer = await _askLine('是否沿用当前会话上下文？(y/n) ');
+  return /^[Yy]/.test(answer);
 }
 
 // ─── Main Entry ──────────────────────────────────────────
@@ -128,8 +135,12 @@ async function executePlan(config, input, opts = {}) {
   }
 
   let shouldAutoRun = false;
+  let shouldContinue = false;
   if (!opts.planOnly) {
     shouldAutoRun = await promptAutoRun();
+    if (shouldAutoRun) {
+      shouldContinue = await promptContinueSession();
+    }
   }
 
   const hookType = opts.interactive ? 'plan_interactive' : 'plan';
@@ -162,7 +173,7 @@ async function executePlan(config, input, opts = {}) {
       const queryOpts = session.buildQueryOptions(opts);
       queryOpts.systemPrompt = buildSystemPrompt('plan');
 
-      const { success } = await session.runQuery(tasksPrompt, queryOpts);
+      const { success } = await session.runQuery(tasksPrompt, queryOpts, { continue: true });
       if (!success) {
         log('warn', '任务分解查询未正常结束');
       }
@@ -178,9 +189,9 @@ async function executePlan(config, input, opts = {}) {
 
     if (shouldAutoRun) {
       console.log('');
-      log('info', '开始自动执行任务...');
+      log('info', `开始自动执行任务...${shouldContinue ? '（沿用会话上下文）' : ''}`);
       const { executeRun } = require('./runner');
-      await executeRun(config, opts);
+      await executeRun(config, { ...opts, continue: shouldContinue });
     }
   }
 }

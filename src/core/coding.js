@@ -7,6 +7,7 @@ const { log } = require('../common/config');
 async function executeCoding(config, sessionNum, opts = {}) {
   const taskId = opts.taskId || 'unknown';
   const dateStr = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12);
+  const continueSession = opts.continue ?? false;
 
   return Session.run('coding', config, {
     sessionNum,
@@ -19,7 +20,9 @@ async function executeCoding(config, sessionNum, opts = {}) {
       queryOpts.systemPrompt = buildSystemPrompt('coding');
       queryOpts.disallowedTools = ['askUserQuestion'];
 
-      const { subtype, cost, usage } = await session.runQuery(prompt, queryOpts);
+      const { subtype, cost, usage } = await session.runQuery(prompt, queryOpts, {
+        continue: continueSession,
+      });
 
       if (subtype && subtype !== 'success' && subtype !== 'unknown') {
         log('warn', `session 结束原因: ${subtype}`);

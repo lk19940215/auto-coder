@@ -8,7 +8,7 @@
 ## 修复流程
 
 1. Read 每个 .pen 文件
-2. 按铁律和白名单逐项验证
+2. 按铁律和白名单逐项验证（参见格式规范部分）
 3. 如发现问题，Write 修复后的完整文件
 4. 输出修复报告
 
@@ -22,64 +22,11 @@
 
 ---
 
-## 铁律（逐条检查）
-
-| # | 规则 | 正确 | 错误 |
-|---|------|------|------|
-| 1 | version `"2.9"` | `"2.9"` | `"2.8"` 或其它 |
-| 2 | 跨文件用冒号 `:` 分隔 | `$sys:color.x` / `ref:"sys:x"` | `$sys/color.x` / `sys/x` |
-| 3 | `cornerRadius` 不是 `borderRadius` | `"cornerRadius":12` | `"borderRadius":12` |
-| 4 | 独立 `x`, `y` | `"x":0,"y":0` | `"position":{"x":0}` |
-| 5 | stroke 是对象 | `{"align":"center","thickness":2,"fill":"#c"}` | `"stroke":"#c"` |
-| 6 | 颜色 hex 格式 | `"#RRGGBB"` / `"#RRGGBBAA"` | `rgba(...)` / `transparent` |
-| 7 | 只省略 `"layout":"horizontal"` | `"layout":"vertical"` 保留 | 只删 horizontal，**不要删 vertical** |
-| 8 | fontFamily 写字体名 | `"Inter, sans-serif"` | `"$sys:font.x"` |
-
----
-
-## ⚠️ [CRITICAL] 属性白名单
-
-**不在此白名单中的属性必须删除。**
-
-### 通用属性（所有节点）
-
-id, type, name, x, y, width, height, rotation, opacity, enabled, reusable, layoutPosition, flipX, flipY, metadata, context, theme
-
-### frame 独有
-
-fill, stroke, effect, cornerRadius, layout, gap, padding, justifyContent, alignItems, children, clip, placeholder, slot, layoutIncludeStroke
-
-### text 独有
-
-fill, stroke, effect, content, fontFamily, fontSize, fontWeight, fontStyle, letterSpacing, lineHeight, textAlign, textAlignVertical, textGrowth, underline, strikethrough, href
-
-### ref 独有
-
-ref, descendants（+ 可覆盖引用组件根属性）
-
-### rectangle 独有
-
-fill, stroke, effect, cornerRadius
-
-### ellipse 独有
-
-fill, stroke, effect, innerRadius, startAngle, sweepAngle
-
-### icon_font 独有
-
-fill, effect, iconFontName, iconFontFamily, weight
-
-### group 独有
-
-effect, layout, gap, padding, justifyContent, alignItems, children
-
----
-
-## 速查表：常见非法模式 → 修复方式
+## 常见非法模式 → 修复方式
 
 | 发现 | 修复 |
 |------|------|
-| CSS 属性（margin*, marginTop, marginBottom, marginLeft, marginRight, padding-top, border*, transition, animation, hover, display, cursor, zIndex, overflow, boxShadow, backgroundColor, transform, visibility, position(对象)） | 删除 |
+| CSS 属性（margin*, padding-top, border*, transition, animation, hover, display, cursor, zIndex, overflow, boxShadow, backgroundColor, transform, visibility, position(对象)） | 删除 |
 | `"fill": "linear-gradient(...)"` | 替换为渐变对象或纯色 |
 | `"fill": "transparent"` | → `"#00000000"` |
 | `"fill": "rgba(255,255,255,0.2)"` | → `"#FFFFFF33"` |
@@ -95,20 +42,18 @@ effect, layout, gap, padding, justifyContent, alignItems, children
 | `"fontFamily": "$sys:font.x"` | → 直接写字体名 |
 | `"borderRadius"` | → `"cornerRadius"` |
 | `"layout": "horizontal"` | → 删除（**只删 horizontal！vertical 保留**）|
-| `"padding": [0,32,0,32]` | → `[0,32]` |
 | gradient 缺 `enabled` | → 添加 `"enabled":true` |
 | `"justifyContent": "space-between"` | → `"space_between"` |
 | `"alignItems": "flex_start"` | → `"start"` |
 | `"stroke": "#color"` + `"strokeWidth": 2` | → `{"align":"center","thickness":2,"fill":"#c"}` |
-| ellipse/rectangle 有 children | → 改用 frame 包裹 |
-| 变量嵌套格式 | → 拆为扁平 `"color.x":{...}` |
-| 重复 ID | → 追加数字后缀 |
+| descendants key 缺 `sys:` 前缀 | → 添加 `"sys:"` 前缀 |
 
 ---
 
 ## 结构检查
 
 - **根结构**: 必须有 `"version":"2.9"` 和 `children` 数组，根不能有 `type`
+- **页面文件**: 必须有 `"imports": { "sys": "../system.lib.pen" }`
 - **themes**: `{"轴名":["值1","值2"]}`，如 `{"mode":["light","dark"]}`
 - **variables/themes/imports**: 只能在根级
 - **顶层 children**: 每个 frame 必须有 `x` 和 `y`

@@ -20,7 +20,10 @@ function buildSystemPrompt(type) {
     case 'design':  specific = assets.read('designSystem') || ''; break;
     case 'designFix': specific = assets.read('designFixSystem') || ''; break;
   }
-  if (type === 'design' || type === 'designFix') return specific;
+  if (type === 'design' || type === 'designFix') {
+    const base = assets.read('designBase') || '';
+    return base ? `${specific}\n\n---\n\n${base}` : specific;
+  }
   return specific ? `${specific}\n\n${core}` : core;
 }
 

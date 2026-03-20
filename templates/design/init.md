@@ -266,7 +266,28 @@
           "id": "section-header",
           "ref": "sys:header",
           "descendants": {
-            "sys:header-logo": { "content": "My App" }
+            "sys:header-logo": { "content": "My App" },
+            "sys:nav-link-1": { "content": "功能" },
+            "sys:nav-link-2": { "content": "文档" }
+          }
+        },
+        {
+          "type": "ref",
+          "id": "feature-card-1",
+          "ref": "sys:card",
+          "descendants": {
+            "sys:card-icon-symbol": { "content": "⚡" },
+            "sys:card-title": { "content": "功能标题" },
+            "sys:card-desc": { "content": "功能描述文字" }
+          }
+        },
+        {
+          "type": "ref",
+          "id": "section-footer",
+          "ref": "sys:footer",
+          "descendants": {
+            "sys:footer-brand": { "content": "My App" },
+            "sys:footer-desc": { "content": "产品简介" }
           }
         }
       ]

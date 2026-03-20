@@ -12,12 +12,6 @@ const { Session } = require('./session');
 // ─── Design Dir ───────────────────────────────────────────
 
 function getDesignDir() {
-  const envDir = process.env.DESIGN_DIR;
-  if (envDir) {
-    const resolved = path.resolve(assets.projectRoot, envDir);
-    if (!fs.existsSync(resolved)) fs.mkdirSync(resolved, { recursive: true });
-    return resolved;
-  }
   return assets.dir('design');
 }
 
@@ -37,6 +31,17 @@ function scanPenFiles(designDir) {
   return files;
 }
 
+// ─── Type Resolution ─────────────────────────────────────
+
+function resolveType(opts, designDir) {
+  if (opts.type) return opts.type;
+
+  const systemPenPath = path.join(designDir, 'system.lib.pen');
+  if (!fs.existsSync(systemPenPath)) return 'init';
+
+  return 'new';
+}
+
 // ─── Prompt Builders ─────────────────────────────────────
 
 function buildProjectContext() {
@@ -54,9 +59,7 @@ function buildProjectContext() {
   return ctx;
 }
 
-function buildDesignPrompt(instruction) {
-  const designDir = getDesignDir();
-
+function buildDesignPrompt(instruction, designDir) {
   let designContext = `### 设计文件目录\n绝对路径: ${designDir}\n`;
 
   const systemPenPath = path.join(designDir, 'system.lib.pen');
@@ -138,6 +141,19 @@ function showDesignSummary(designDir) {
   const hasMap = fs.existsSync(path.join(designDir, 'design_map.json'));
   if (hasMap) log('info', 'design_map.json OK');
 
+  let hasJsonError = false;
+  for (const f of penFiles) {
+    try {
+      JSON.parse(fs.readFileSync(f.abs, 'utf8'));
+    } catch (e) {
+      hasJsonError = true;
+      log('error', `${f.rel}: JSON 语法错误 — ${e.message}`);
+    }
+  }
+  if (hasJsonError) {
+    log('warn', '存在 JSON 格式问题，建议运行: claude-coder design --type fix');
+  }
+
   return penFiles.length;
 }
 
@@ -185,7 +201,14 @@ async function executeDesign(config, input, opts = {}) {
   const pagesDir = path.join(designDir, 'pages');
   if (!fs.existsSync(pagesDir)) fs.mkdirSync(pagesDir, { recursive: true });
 
-  if (opts.fix) {
+  const type = resolveType(opts, designDir);
+  log('info', `Design 类型: ${type}`);
+
+  if (!opts.model || !opts.model.includes('glm-5')) {
+    log('info', '提示: design 推荐使用 --model glm-5 获得最佳效果');
+  }
+
+  if (type === 'fix') {
     const penFiles = scanPenFiles(designDir);
     if (penFiles.length === 0) {
       log('warn', '设计目录中没有 .pen 文件需要修复');
@@ -201,68 +224,32 @@ async function executeDesign(config, input, opts = {}) {
   const isAutoMode = !!instruction;
   log('info', `Design 模式: ${isAutoMode ? '自动' : '对话'}`);
 
-  if (!opts.model || !opts.model.includes('glm')) {
-    log('info', '提示: design 推荐使用 --model glm-5 获得最佳效果');
-  }
-
   const ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12);
-  let currentInstruction = instruction;
-  let iteration = 0;
 
-  while (true) {
-    iteration++;
-    log('info', iteration === 1
-      ? (isAutoMode ? '正在根据需求生成 UI 设计...' : '正在启动对话式设计...')
-      : `正在根据反馈调整设计 (第 ${iteration} 轮)...`);
+  const sessionResult = await Session.run('design', config, {
+    logFileName: `design_${ts}_1.log`,
+    label: isAutoMode ? 'design_auto' : 'design_dialogue',
+    async execute(session) {
+      const queryOpts = session.buildQueryOptions(opts);
+      queryOpts.systemPrompt = buildSystemPrompt('design');
+      return await session.runQuery(buildDesignPrompt(instruction, designDir), queryOpts);
+    },
+  });
 
-    const sessionResult = await Session.run('design', config, {
-      logFileName: `design_${ts}_${iteration}.log`,
-      label: isAutoMode ? 'design_auto' : 'design_dialogue',
-      async execute(session) {
-        const queryOpts = session.buildQueryOptions(opts);
-        queryOpts.systemPrompt = buildSystemPrompt('design');
-        if (isAutoMode && iteration === 1) {
-          queryOpts.disallowedTools = ['askUserQuestion'];
-        }
-        return await session.runQuery(buildDesignPrompt(currentInstruction), queryOpts);
-      },
-    });
-
-    if (sessionResult && !sessionResult.success) {
-      log('warn', 'AI 会话未正常完成，检查生成结果...');
-    }
-
-    const penCount = showDesignSummary(designDir);
-    if (penCount === 0) {
-      log('error', 'AI 未生成任何 .pen 文件');
-      return;
-    }
-
-    log('ok', `设计目录: ${designDir}  文件: ${penCount}`);
-
-    const answer = await askUser('\n有什么要调整的？(直接回车确认 / fix 修复 / 输入调整需求 / cancel 取消)\n> ');
-    const cmd = answer.toLowerCase();
-
-    if (cmd === 'cancel') { log('info', '已取消'); return; }
-
-    if (cmd === 'fix' || cmd === '修复') {
-      await runFixSession(config, designDir, '', opts);
-      continue;
-    }
-
-    if (!answer) {
-      saveDesignState({ lastTimestamp: new Date().toISOString(), designDir, penCount });
-      log('ok', '设计完成！');
-      console.log('');
-      log('info', '迭代调整: claude-coder design "修改xxx"');
-      log('info', '修复文件: claude-coder design --fix');
-      log('info', '生成计划: claude-coder plan');
-      return;
-    }
-
-    currentInstruction = answer;
-    log('info', `收到调整需求: ${answer}`);
+  if (sessionResult && !sessionResult.success) {
+    log('warn', 'AI 会话未正常完成，检查生成结果...');
   }
+
+  const penCount = showDesignSummary(designDir);
+  if (penCount === 0) {
+    log('error', 'AI 未生成任何 .pen 文件');
+    return;
+  }
+
+  saveDesignState({ lastTimestamp: new Date().toISOString(), designDir, penCount, type });
+  log('ok', `设计完成！ 文件: ${penCount}`);
+  log('info', '迭代调整: claude-coder design "修改xxx"');
+  log('info', '修复文件: claude-coder design --type fix');
 }
 
 module.exports = { executeDesign };
