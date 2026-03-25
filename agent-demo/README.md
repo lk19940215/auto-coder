@@ -63,3 +63,8 @@ npm start
 - "读取 package.json"
 - "创建一个 hello.js 打印 hello world"
 - "运行 node hello.js"
+
+
+## 后续
+
+[ ] - 调研，并引入 https://github.com/vadimdemedes/ink 库

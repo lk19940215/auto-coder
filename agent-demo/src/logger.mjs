@@ -1,18 +1,40 @@
 /**
  * Logger - 统一输出（终端 + 日志文件）
  *
- * 终端始终输出，日志文件仅在 DEBUG=true 时写入。
+ * 三个核心方法:
+ *   print(text)        → 只输出到终端
+ *   log(label, data)   → 终端（带颜色） + 日志文件
+ *   start(...)         → 启动信息
  */
 
-import { appendFileSync, writeFileSync, mkdirSync } from 'fs';
+import { appendFileSync, mkdirSync } from 'fs';
 
 const C = {
   reset:   '\x1b[0m',
   dim:     '\x1b[2m',
+  bold:    '\x1b[1m',
   cyan:    '\x1b[36m',
   green:   '\x1b[32m',
   yellow:  '\x1b[33m',
+  red:     '\x1b[31m',
+  magenta: '\x1b[35m',
+  blue:    '\x1b[34m',
 };
+
+const LABEL_COLORS = {
+  '请求参数':   C.dim,
+  '响应内容':   C.dim,
+  '错误':       C.red,
+};
+
+function labelColor(label) {
+  if (LABEL_COLORS[label]) return LABEL_COLORS[label];
+  if (label.startsWith('工具开始')) return C.yellow;
+  if (label.startsWith('工具完成')) return C.green;
+  return C.dim;
+}
+
+export { C };
 
 export class Logger {
   constructor(debug = false) {
@@ -27,12 +49,12 @@ export class Logger {
     const date = now.toISOString().split('T')[0];
     const time = now.toTimeString().split(' ')[0].replace(/:/g, '-');
     this.file = `logs/${date}_${time}.log`;
-    this._log(`${'═'.repeat(50)}\n  Agent 启动 ${now.toISOString()}\n${'═'.repeat(50)}`);
+    this._write(`${'═'.repeat(50)}\n  Agent 启动 ${now.toLocaleString()}\n${'═'.repeat(50)}`);
     return this.file;
   }
 
   start({ model, tools, logFile, systemPrompt, toolSchemas }) {
-    console.log(`\n${C.cyan}═══ AI Coding Agent ═══${C.reset}`);
+    console.log(`\n${C.cyan}${C.bold}═══ AI Coding Agent ═══${C.reset}`);
     console.log(`${C.dim}模型: ${model}${C.reset}`);
     console.log(`${C.dim}工具: ${tools.join(', ')}${C.reset}`);
     if (logFile) console.log(`${C.dim}调试日志: ${logFile}${C.reset}`);
@@ -41,42 +63,29 @@ export class Logger {
     if (toolSchemas) this._section('可用工具', toolSchemas);
   }
 
-  startRequest({ model, messagesCount, baseURL, fullParams }) {
-    const params = { model, max_tokens: fullParams?.max_tokens, baseURL: baseURL || 'default', messages数量: messagesCount };
-    this._section('请求参数', params);
+  print(text) {
+    console.log(text);
   }
 
-  endRequest({ fullResponse }) {
-    if (fullResponse) this._section('响应内容', fullResponse);
-  }
-
-  agentText(text) {
-    console.log(`\n${C.cyan}Agent:${C.reset} ${text}\n`);
-  }
-
-  toolCall(name, input, result) {
-    const inputStr = JSON.stringify(input);
-    console.log(`  ${C.dim}[工具] ${name}(${inputStr.substring(0, 120)})${C.reset}`);
-    console.log(`  ${C.dim}[结果] ${result.substring(0, 200)}${result.length > 200 ? '...' : ''}${C.reset}`);
-    this._section(`工具: ${name}`, { input, result: result.substring(0, 500) });
-  }
-
-  error(msg) {
-    console.error(`\n${C.yellow}API 错误: ${msg}${C.reset}\n`);
-    this._section('错误', msg);
-  }
-
-  bye() {
-    console.log(`\n${C.dim}再见！${C.reset}\n`);
+  log(label, data) {
+    const color = labelColor(label);
+    if (data !== undefined) {
+      const preview = typeof data === 'string' ? data : JSON.stringify(data);
+      console.log(`${color}[${label}] ${preview.substring(0, 200)}${preview.length > 200 ? '...' : ''}${C.reset}`);
+    } else {
+      console.log(`${color}${label}${C.reset}`);
+    }
+    this._section(label, data);
   }
 
   _section(title, data) {
+    if (data === undefined) return this._write(`\n────── ${title} ──────`);
     const content = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
-    this._log(`\n────── ${title} ──────\n${content}`);
+    this._write(`\n────── ${title} ──────\n${content}`);
   }
 
-  _log(text) {
+  _write(text) {
     if (!this.debug || !this.file) return;
-    appendFileSync(this.file, `[${new Date().toISOString()}] ${text}\n`);
+    appendFileSync(this.file, `[${new Date().toLocaleString()}] ${text}\n`);
   }
 }

@@ -9,7 +9,9 @@ export const API_KEY = process.env.ANTHROPIC_API_KEY;
 export const BASE_URL = process.env.BASE_URL;
 export const DEFAULT_MODEL = process.env.DEFAULT_MODEL;
 export const FALLBACK_MODEL = process.env.FALLBACK_MODEL;
+export const MAX_TOKENS = parseInt(process.env.MAX_TOKENS || '8192');
 export const DEBUG = process.env.AGENT_DEBUG === 'true';
+export const RESUME_FILE = process.env.RESUME_FILE || '';
 
 export const SYSTEM_PROMPT = `你是一个 AI 编程助手。你可以使用工具来读取文件、写入文件、执行命令。
 

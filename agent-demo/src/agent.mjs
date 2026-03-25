@@ -13,15 +13,16 @@
  *   }
  *
  * 运行: npm start
+ * 恢复会话: RESUME_FILE=logs/xxx-messages.json npm start
  */
 
 import Anthropic from '@anthropic-ai/sdk';
 import * as readline from 'readline';
 
-import { API_KEY, BASE_URL, DEFAULT_MODEL, DEBUG, SYSTEM_PROMPT } from './config.mjs';
+import { API_KEY, BASE_URL, DEFAULT_MODEL, MAX_TOKENS, DEBUG, SYSTEM_PROMPT, RESUME_FILE } from './config.mjs';
 import { toolSchemas, executeTool } from './tools.mjs';
 import { status } from './display.mjs';
-import { Logger } from './logger.mjs';
+import { Logger, C } from './logger.mjs';
 import { Messages } from './messages.mjs';
 
 // Anthropic SDK 客户端，支持 baseURL 切换模型提供商
@@ -35,6 +36,11 @@ async function main() {
 
   const logFile = logger.init();
   messages.init(logFile);
+
+  if (RESUME_FILE) {
+    messages.load(RESUME_FILE);
+  }
+
   logger.start({
     model: DEFAULT_MODEL,
     tools: toolSchemas.map(t => t.name),
@@ -45,49 +51,54 @@ async function main() {
 
   // stopReason 驱动循环行为:
   // - 'tool_use' → 跳过用户输入，直接再调 LLM（模型还在工作）
+  // - 'max_tokens' → 输出被截断，继续调 LLM 接着输出
   // - 'end_turn' 或 null → 等待用户输入
   let stopReason = null;
 
   while (true) {
-    // ── 步骤 1: 获取用户输入（工具循环中跳过）──────────────
-    if (stopReason !== 'tool_use') {
+    // ── 步骤 1: 获取用户输入（工具循环中跳过）──────────────    
+    if (stopReason !== 'tool_use' && stopReason !== 'max_tokens') {
       status('waiting');
       const input = await ask(`\x1b[32m你: \x1b[0m`);
       if (!input || input.trim() === 'exit') break;
       messages.push({ role: 'user', content: input });
     }
 
-    // ── 步骤 2: 调用 LLM ─────────────────────────────────
-    // 每次都发送完整的 messages 历史 + 工具定义
-    // 模型根据历史和工具描述，决定是回复文本还是调用工具
+    if (stopReason === 'max_tokens') {
+      logger.print(`${C.yellow}[续] 输出被截断，继续请求...${C.reset}`);
+    }
+
     status('thinking');
 
     const requestParams = {
       model: DEFAULT_MODEL,
-      max_tokens: 4096,
+      max_tokens: MAX_TOKENS,
       system: SYSTEM_PROMPT,
       tools: toolSchemas,
       messages: messages.current,
     };
 
-    logger.startRequest({
+    logger.log('请求参数', {
       model: DEFAULT_MODEL,
-      messagesCount: messages.length,
-      baseURL: BASE_URL,
-      fullParams: requestParams,
+      max_tokens: MAX_TOKENS,
+      baseURL: BASE_URL || 'default',
+      messages数量: messages.length,
     });
 
     let response;
     try {
+      // ── 步骤 2: 调用 LLM ─────────────────────────────────
+      // 每次都发送完整的 messages 历史 + 工具定义
+      // 模型根据历史和工具描述，决定是回复文本还是调用工具
       response = await client.messages.create(requestParams);
     } catch (e) {
       status('error');
-      logger.error(e.message);
-      stopReason = null; // 重置，下一轮重新等待用户输入
+      logger.log('错误', e.message);
+      stopReason = null;
       continue;
     }
 
-    logger.endRequest({ fullResponse: response });
+    logger.log('响应内容', response);
 
     // 将 AI 响应加入历史（包含 text 和/或 tool_use blocks）
     messages.push({ role: 'assistant', content: response.content });
@@ -98,12 +109,11 @@ async function main() {
 
     for (const block of response.content) {
       if (block.type === 'text') {
-        // 纯文本回复 → 显示给用户
-        logger.agentText(block.text);
+        logger.print(`\n${C.cyan}Agent:${C.reset} ${block.text}\n`);
 
       } else if (block.type === 'tool_use') {
-        // 模型请求调用工具 → 执行并收集结果
         status('calling');
+        logger.log(`工具开始: ${block.name}`, block.input);
 
         const result = await executeTool(block.name, block.input);
 
@@ -113,7 +123,8 @@ async function main() {
           ? result.substring(0, MAX) + `\n... [截断，共 ${result.length} 字符]`
           : result;
 
-        logger.toolCall(block.name, block.input, truncated);
+        // 工具执行后记录
+        logger.log(`工具完成: ${block.name}`, truncated);
 
         // tool_result 的 tool_use_id 必须匹配 tool_use 的 id（API 协议要求）
         toolResults.push({
@@ -129,13 +140,15 @@ async function main() {
       // 有工具结果 → 作为 user 消息送回（API 协议：tool_result 必须在 user 角色下）
       // stopReason 仍是 'tool_use'，下一轮会跳过用户输入，直接再调 LLM
       messages.push({ role: 'user', content: toolResults });
+    } else if (stopReason === 'max_tokens') {
+      // 截断时不等用户，继续调 LLM 接着输出
     } else {
       // 没有工具调用（end_turn）→ 任务完成，下一轮等待用户输入
       status('done');
     }
   }
 
-  logger.bye();
+  logger.print(`\n${C.dim}再见！${C.reset}\n`);
   rl.close();
 }
 
