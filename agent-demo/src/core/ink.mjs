@@ -118,7 +118,8 @@ function AgentApp() {
 
     // 状态指示器
     status === 'thinking' ? h(Spinner, { label: '思考中...', color: 'blue' }) : null,
-    status === 'calling' ? h(Spinner, { label: '调用工具...', color: 'magenta' }) : null,
+    status === 'calling' ? h(Spinner, { label: '工具调用中...', color: 'yellow' }) : null,
+    status === 'sub-agent' ? h(Spinner, { label: '子Agent 运行中...', color: 'magenta' }) : null,
     status === 'done' ? h(Text, { color: 'cyan' }, '✅ 完成') : null,
     status === 'error' ? h(Text, { color: 'red' }, '❌ 错误') : null,
 

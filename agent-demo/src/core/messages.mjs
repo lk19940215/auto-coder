@@ -24,7 +24,11 @@ export class Messages {
   async load(filePath) {
     try {
       const data = JSON.parse(await readFile(filePath, 'utf-8'));
-      this.all = Array.isArray(data) ? data : [];
+      if (!Array.isArray(data)) {
+        console.warn('⚠️  消息历史格式错误');
+        return { ok: false };
+      }
+      this.all = data;
       return { ok: true, count: this.all.length };
     } catch {
       return { ok: false };
@@ -44,6 +48,16 @@ export class Messages {
     return this.all.length;
   }
 
+  // 清理历史，保留最近 N 条
+  trim(maxMessages = 100) {
+    if (this.all.length > maxMessages) {
+      this.all = this.all.slice(-maxMessages);
+      this._debounceSave();
+      return this.all.length;
+    }
+    return 0;
+  }
+
   _debounceSave() {
     if (this._saveTimer) return;
     this._saveTimer = setTimeout(() => {
@@ -55,9 +69,11 @@ export class Messages {
   async _save() {
     if (!this.file) return;
     try {
-      await writeFile(this.file, JSON.stringify(this.all), 'utf-8');
-    } catch {
-      // 静默失败，不中断 agent
+      // 美化格式方便调试
+      const json = JSON.stringify(this.all, null, 2);
+      await writeFile(this.file, json, 'utf-8');
+    } catch (err) {
+      console.error(`⚠️  消息保存失败: ${err.message}`);
     }
   }
 }

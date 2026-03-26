@@ -1,0 +1,121 @@
+/**
+ * Agent 评估框架 — 入口
+ *
+ * 运行全部:     node src/eval.mjs
+ * 指定用例:     node src/eval.mjs fix_bug multi_edit
+ * 开启日志:     node src/eval.mjs --log
+ * 列出可用用例:  node src/eval.mjs --list
+ *
+ * 也可通过 .env 配置: EVAL_LOG=true 默认开启日志
+ *
+ * 输出:
+ *   终端 — 实时进度和评分
+ *   eval-reports/*.md — 评分报告（始终生成）
+ *   logs/eval-*.log — 详细日志（--log 或 EVAL_LOG=true 时生成）
+ */
+
+import { writeFile, mkdir } from 'fs/promises';
+import { API_KEY, BASE_URL, DEFAULT_MODEL, MAX_TOKENS, SYSTEM_PROMPT } from './config.mjs';
+import { AgentCore } from './core/agent-core.mjs';
+import { Logger } from './core/logger.mjs';
+import { toolSchemas } from './tools/index.mjs';
+import { CASES } from './eval/cases.mjs';
+import { runCase, backupSandbox, restoreSandbox, cleanupBackup } from './eval/runner.mjs';
+import { generateReport } from './eval/report.mjs';
+
+async function main() {
+  const args = process.argv.slice(2);
+
+  // --list: 列出可用 case
+  if (args.includes('--list')) {
+    console.log('\n可用测试用例:');
+    for (const c of CASES) {
+      console.log(`  ${c.id.padEnd(22)} ${c.name}`);
+    }
+    return;
+  }
+
+  // 解析参数：--log 开启日志，其余作为 case ID 过滤
+  const enableLog = args.includes('--log') || process.env.EVAL_LOG === 'true';
+  const caseFilter = args.filter(a => !a.startsWith('--'));
+
+  const cases = caseFilter.length > 0
+    ? CASES.filter(c => caseFilter.includes(c.id))
+    : CASES;
+
+  if (cases.length === 0) {
+    console.log('\n没有匹配的测试用例。用 --list 查看可用用例。');
+    return;
+  }
+
+  // 初始化 Logger（仅 --log 或 EVAL_LOG=true 时启用）
+  const logger = enableLog ? new Logger(true, { silent: true }) : null;
+  const logFile = logger?.init('eval') || null;
+
+  if (logger) {
+    logger.start({
+      model: DEFAULT_MODEL,
+      tools: toolSchemas.map(t => t.name),
+      logFile,
+      systemPrompt: SYSTEM_PROMPT,
+      toolSchemas,
+    });
+  }
+
+  const agent = new AgentCore({
+    apiKey: API_KEY,
+    baseURL: BASE_URL,
+    model: DEFAULT_MODEL,
+    maxTokens: MAX_TOKENS,
+    systemPrompt: SYSTEM_PROMPT,
+    logger,
+  });
+
+  console.log('\n╭─── Agent Eval ───╮');
+  console.log(`│ 模型: ${DEFAULT_MODEL}`);
+  console.log(`│ 用例: ${cases.length} 个`);
+  if (logFile) console.log(`│ 日志: ${logFile}`);
+  else console.log(`│ 日志: 关闭（用 --log 开启）`);
+  console.log('╰──────────────────╯');
+
+  await backupSandbox();
+
+  const results = [];
+  for (const caseSpec of cases) {
+    await restoreSandbox();
+
+    try {
+      const result = await runCase(agent, caseSpec, logger);
+      results.push(result);
+    } catch (e) {
+      console.log(`    ✗ 异常: ${e.message}`);
+      results.push({
+        caseId: caseSpec.id,
+        caseName: caseSpec.name,
+        trace: { toolCalls: [], turns: 0, tokens: { input: 0, output: 0 }, validated: false },
+        scores: { correctness: 0, toolChoice: 0, efficiency: 0, noErrors: 0, total: 0 },
+        elapsed: 0,
+      });
+    }
+  }
+
+  await restoreSandbox();
+  await cleanupBackup();
+
+  // 生成报告
+  const report = generateReport(results, DEFAULT_MODEL);
+  await mkdir('eval-reports', { recursive: true });
+  const reportFile = `eval-reports/${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.md`;
+  await writeFile(reportFile, report, 'utf-8');
+
+  // 终端总结
+  console.log('\n' + '─'.repeat(50));
+  const totalScore = results.reduce((s, r) => s + r.scores.total, 0);
+  const avg = (totalScore / results.length).toFixed(1);
+  console.log(`  平均得分: ${avg}/100`);
+  console.log(`  报告: ${reportFile}`);
+  if (logFile) console.log(`  日志: ${logFile}`);
+  console.log('─'.repeat(50));
+}
+
+main();

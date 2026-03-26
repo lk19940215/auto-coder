@@ -18,46 +18,91 @@ DEFAULT_MODEL=claude-sonnet-4-20250514
 AGENT_DEBUG=true                      # 启用日志
 ```
 
-启动：
+启动交互模式：
 
 ```bash
 npm start
+```
+
+运行评估：
+
+```bash
+node src/eval.mjs              # 跑全部 16 个用例
+node src/eval.mjs read_basic   # 跑单个用例
+node src/eval.mjs fix_bug --log  # 开启详细日志（输出到 logs/eval-*.log）
+node src/eval.mjs --list       # 列出所有可用用例
 ```
 
 ## 项目结构
 
 ```
 src/
-  agent.mjs              # 主循环（Agent Loop）
+  agent.mjs              # 交互模式入口（Ink UI + AgentCore）
+  eval.mjs               # 评估模式入口
+  eval/                  # 评估框架
+    cases.mjs            # 16 个测试用例定义（含多轮 + 上下文 + SubAgent）
+    runner.mjs           # 运行器 + 评分 + 沙盒管理
+    report.mjs           # Markdown 报告生成
   config.mjs             # 配置 + SYSTEM_PROMPT
   core/                  # 运行时基础设施
+    agent-core.mjs       # Agent 引擎（纯逻辑，支持自定义工具集）
     ink.mjs              # 终端 UI（Ink / React for CLI）
     logger.mjs           # 文件日志（结构化格式）
     messages.mjs         # 对话历史存储（异步 + 防抖保存）
   tools/                 # 工具系统
     registry.mjs         # define() + 注册表
     index.mjs            # 聚合 + 导出 toolSchemas / executeTool
-    file.mjs             # read_file / write_file / edit_file
+    file.mjs             # read / write / edit / multi_edit
     search.mjs           # grep + ls（@vscode/ripgrep）
     glob.mjs             # glob — 按文件名模式查找（@vscode/ripgrep）
-    ast.mjs              # code_symbols（web-tree-sitter AST 分析）
-    bash.mjs             # execute_bash
+    ast.mjs              # symbols（web-tree-sitter AST 分析）
+    bash.mjs             # bash
+    task.mjs             # task — SubAgent 委派（独立上下文 + 只读工具集）
+test-example/            # 评估用测试项目（已知 bug + 已知结构）
+eval-reports/            # 评估报告输出
 docs/                    # 学习文档
   core.md                # Agent Loop + 消息协议 + SDK
   tools.md               # 工具设计原理
   advanced.md            # 上下文管理 + 显示层
   semantic-search.md     # AST 分析 + 语义搜索
+  eval.md                # 评估体系（SWE-bench + Eval Harness）
 ```
 
-## 核心流程
+## 架构
+
+```
+                ┌─────────────────┐
+                │   AgentCore     │  纯逻辑引擎
+                │  (agent-core)   │  batch / stream 调用
+                └────────┬────────┘
+          ┌──────────────┤──────────────┐
+          ▼              ▼              ▼
+  ┌─────────────┐  ┌──────────┐  ┌───────────┐
+  │  agent.mjs  │  │ eval.mjs │  │  task 工具 │
+  │  交互模式   │  │ 评估模式 │  │  SubAgent │
+  │  Ink UI     │  │ 自动评分 │  │  只读工具  │
+  └─────────────┘  └──────────┘  └───────────┘
+```
+
+## 核心流程（交互模式）
 
 ```
 while(true) {
-  等待用户输入 → messages.push(user)
-  调用 LLM（streaming）→ 实时显示 thinking / text
-  if stop_reason === 'tool_use' → 执行工具 → 结果加入 messages → 继续
-  if stop_reason === 'end_turn'  → 等待用户
+  等待用户输入
+  AgentCore.run(input, callbacks) → 流式 UI + 工具调用循环
+  完成 → 等待用户
 }
+```
+
+## 评估模式
+
+```
+加载 test case → 备份 test-example
+  ↓
+for each case:
+  恢复沙盒 → AgentCore.run(input) → 验证结果 → 评分
+  ↓
+生成报告 → eval-reports/
 ```
 
 ## 工具列表
@@ -67,11 +112,13 @@ while(true) {
 | read | fs/promises | 读取文件 |
 | write | fs/promises | 创建新文件 |
 | edit | fs/promises | Search & Replace 修改文件 |
+| multi_edit | fs/promises | 同一文件多处 Search & Replace |
 | grep | @vscode/ripgrep | 正则搜索代码内容（支持 output_mode） |
 | glob | @vscode/ripgrep | 按文件名模式查找文件 |
 | ls | @vscode/ripgrep | 列出目录文件树 |
 | symbols | web-tree-sitter | AST 分析（列符号 / 获取定义） |
 | bash | child_process | 执行 bash 命令 |
+| task | AgentCore | SubAgent 委派（独立上下文，只读工具集） |
 
 ## 技术栈
 

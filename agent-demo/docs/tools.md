@@ -8,11 +8,11 @@
 define('tool_name', '描述（模型据此决定何时调用）', { 参数schema }, ['必填'], async (input) => { ... });
 ```
 
-参考：`src/tools/`（按职责拆分为 file.mjs / search.mjs / glob.mjs / ast.mjs / bash.mjs）
+参考：`src/tools/`（按职责拆分为 file.mjs / search.mjs / glob.mjs / ast.mjs / bash.mjs / task.mjs）
 
 ---
 
-## 当前工具集（8 个）
+## 当前工具集（10 个）
 
 工具命名对齐 Claude Code 风格（短名称）。
 
@@ -21,11 +21,13 @@ define('tool_name', '描述（模型据此决定何时调用）', { 参数schema
 | `read` | 读取文件内容 | Node fs | Read |
 | `write` | 创建新文件 | Node fs | Write |
 | `edit` | Search & Replace 修改文件 | Node fs | Edit |
+| `multi_edit` | 同一文件多处 S&R | Node fs | MultiEdit |
 | `grep` | 正则搜索代码内容 | @vscode/ripgrep | Grep |
 | `glob` | 按文件名模式查找文件 | @vscode/ripgrep | Glob |
 | `ls` | 列出目录文件树 | @vscode/ripgrep | LS |
 | `symbols` | AST 分析（列符号/获取定义） | web-tree-sitter | — |
 | `bash` | 执行 bash 命令 | child_process | Bash |
+| `task` | SubAgent 委派 | AgentCore | Task |
 
 ---
 
@@ -153,7 +155,7 @@ execSync(`"${rgPath}" --files --max-depth ${max_depth} "${path}"`);
 
 ---
 
-## MultiEdit 原理（未实现）
+## multi_edit 原理
 
 ### 为什么需要 MultiEdit
 
@@ -252,7 +254,7 @@ Bash, Read, Write, Edit, MultiEdit, Grep, Glob, LS,
 WebFetch, WebSearch, Task, TodoWrite, NotebookRead, NotebookEdit, mcp__*
 ```
 
-agent-demo 已实现：`Bash, Read, Write, Edit, Grep, Glob, LS` + `Symbols`（自研）
+agent-demo 已实现：`Bash, Read, Write, Edit, MultiEdit, Grep, Glob, LS, Task` + `Symbols`（自研）
 
 以下是未实现工具的原理和实现思路。
 
@@ -335,7 +337,7 @@ Claude Code 和 Cursor 都是调第三方搜索 API，不是自己爬网页。
 
 ---
 
-## Task / SubAgent 原理（未实现）
+## Task / SubAgent 原理（已实现）
 
 ### 作用
 
@@ -352,47 +354,80 @@ SubAgent: 独立 messages，完成后只返回一段摘要文本
                     ↑ 主上下文干净
 ```
 
-### 实现
+### 架构
+
+```
+父 Agent (全部 10 个工具 + 流式 UI)
+  ├─ read, write, edit, multi_edit, grep, glob, ls, symbols, bash
+  └─ task → SubAgent (只读工具 + 独立上下文 + batch 模式)
+              └─ read, grep, glob, ls, symbols
+```
+
+### 实现（src/tools/task.mjs）
+
+核心设计：
+- **独立上下文** — SubAgent 使用空 messages，不污染父 Agent 上下文
+- **受限工具集** — 只给只读工具（read/grep/glob/ls/symbols），不能修改文件
+- **EventEmitter** — 通过事件向父 Agent 发送进度，驱动 Ink UI 显示
+- **独立日志** — `AGENT_DEBUG=true` 时生成 `logs/sub-agent-*.log`
 
 ```javascript
-async function runSubAgent({ client, prompt, tools, systemPrompt, maxTurns = 15 }) {
-  const messages = [{ role: 'user', content: prompt }];
-  let lastText = '';
+export const taskEvents = new EventEmitter();
 
-  for (let i = 0; i < maxTurns; i++) {
-    const response = await client.messages.create({
-      model: DEFAULT_MODEL,
-      max_tokens: MAX_TOKENS,
-      system: systemPrompt,
-      tools,
-      messages,
-    });
+define('task', '委派子任务给 SubAgent...', {
+  description: { type: 'string' },
+  prompt: { type: 'string' },
+}, ['description', 'prompt'], async ({ description, prompt }) => {
+  const tools = SUB_TOOLS.filter(n => registry[n]).map(n => registry[n].schema);
+  const executor = async (name, input) => { /* 过滤只读工具 */ };
 
-    messages.push({ role: 'assistant', content: response.content });
-    if (response.stop_reason === 'end_turn') break;
+  const subAgent = new AgentCore({
+    tools, executor,
+    systemPrompt: `任务: ${description}`,
+  });
 
-    const toolResults = [];
-    for (const block of response.content) {
-      if (block.type === 'text') lastText = block.text;
-      if (block.type === 'tool_use') {
-        const result = await executeTool(block.name, block.input);
-        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
-      }
-    }
-    if (toolResults.length > 0) {
-      messages.push({ role: 'user', content: toolResults });
-    }
-  }
-  return lastText;
-}
+  taskEvents.emit('start', { description });
+  const trace = await subAgent.run(prompt, [], callbacks, { maxTurns: 8 });
+  taskEvents.emit('done', { toolCalls: trace.toolCalls.length });
 
-define('task', '委托子任务给独立 Agent', {
-  prompt: { type: 'string', description: '任务描述' },
-  description: { type: 'string', description: '简述（3-5 字）' },
-}, ['prompt', 'description'], async ({ prompt, description }) => {
-  return await runSubAgent({ client, prompt, tools: toolSchemas, systemPrompt: SYSTEM_PROMPT });
+  return trace.finalText + toolSummary;
 });
 ```
+
+### AgentCore 如何支持 SubAgent
+
+构造函数新增 `tools` 和 `executor` 可选参数：
+
+```javascript
+class AgentCore {
+  constructor({ apiKey, baseURL, model, maxTokens, systemPrompt, logger,
+                tools,     // 自定义工具 schema（默认全部工具）
+                executor,  // 自定义工具执行器（默认全局 executeTool）
+  }) {
+    this.toolSchemas = tools || defaultToolSchemas;
+    this.executeTool = executor || defaultExecuteTool;
+  }
+}
+```
+
+父 Agent 和 SubAgent 复用同一个 `AgentCore` 类，通过注入不同的 tools/executor 实现差异化。
+
+### Ink UI 集成
+
+通过 EventEmitter 解耦 task 工具和 UI 层：
+
+```
+task.mjs:  taskEvents.emit('tool', { step, name })
+                ↓
+agent.mjs: taskEvents.on('tool', ...) → display.print(...)
+                ↓
+ink.mjs:   状态指示器 → 🟣 "子Agent 运行中..."
+```
+
+三种状态颜色区分：
+- 🔵 蓝色 — 思考中...
+- 🟡 黄色 — 工具调用中...
+- 🟣 紫色 — 子Agent 运行中...
 
 ### Cursor 的 SubAgent 类型
 
@@ -403,6 +438,8 @@ define('task', '委托子任务给独立 Agent', {
 | `shell` | 命令执行 | 专注终端 |
 | `browser-use` | 浏览器测试 | Web 自动化 |
 | `best-of-n-runner` | 并行尝试 | 独立 git worktree，取最优解 |
+
+本项目的 task 工具对应 Cursor 的 `explore` 类型（只读工具集）。
 
 ---
 
