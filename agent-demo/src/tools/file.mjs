@@ -8,7 +8,7 @@ import { define } from './registry.mjs';
 
 define(
   'read',
-  '读取文件内容。修改前必须先读取。可同时批量读取多个相关文件。',
+  '读取文件内容。修改文件前必须先读取，以确保 old_string 精确匹配。不要用 bash cat/head/tail。',
   { path: { type: 'string', description: '文件路径（相对或绝对）' } },
   ['path'],
   async ({ path }) => {
@@ -22,7 +22,7 @@ define(
 
 define(
   'write',
-  '创建新文件或完全覆盖。自动创建目录。仅用于新文件，修改已有文件用 edit/multi_edit。',
+  '创建新文件或完全覆盖已有文件。自动创建父目录。优先用 edit 修改已有文件（只发送变更部分），write 仅用于新文件或需要完全重写。',
   {
     path: { type: 'string', description: '文件路径' },
     content: { type: 'string', description: '要写入的完整文件内容' }
@@ -41,10 +41,15 @@ define(
 
 define(
   'edit',
-  'Search & Replace 修改文件一处。同文件改多处必须用 multi_edit。old_string 必须精确匹配（含空格换行）。',
+  `精确字符串替换修改文件。修改前必须先 read。
+
+用法：
+- old_string 必须从 read 结果精确复制，保留原始缩进（制表符/空格）
+- old_string 必须唯一匹配，否则提供更多上下文行
+- 同文件多处修改必须用 multi_edit`,
   {
     path: { type: 'string', description: '文件路径（相对或绝对）' },
-    old_string: { type: 'string', description: '要替换的原始文本，必须从 read 结果精确复制' },
+    old_string: { type: 'string', description: '要替换的原始文本，必须从 read 结果精确复制（含缩进）' },
     new_string: { type: 'string', description: '替换后的新文本' },
   },
   ['path', 'old_string', 'new_string'],
@@ -71,7 +76,7 @@ define(
 
 define(
   'multi_edit',
-  '同一文件多处 Search & Replace（1 次调用替代 N 次 edit）。edits 按顺序执行，后续匹配基于已更新内容。',
+  '同一文件多处精确替换（1 次调用替代 N 次 edit）。edits 按顺序执行，后续匹配基于已更新内容。修改前必须先 read。',
   {
     path: { type: 'string', description: '文件路径' },
     edits: {

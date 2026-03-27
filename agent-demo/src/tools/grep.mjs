@@ -9,12 +9,21 @@ import { define } from './registry.mjs';
 
 define(
   'grep',
-  '正则搜索代码内容（ripgrep）。返回 文件:行号:匹配行。策略：用 | 在一次调用中组合所有模式，一次覆盖全部目标。多次 grep 调用 = 低效。include 过滤文件类型减少噪音。结果已含匹配行，通常无需再 read。',
+  `正则搜索代码内容（ripgrep）。返回 文件:行号:匹配行。
+
+用法：
+- 支持完整正则语法（如 "log.*Error"、"function\\s+\\w+"、"import.*from"）
+- 用 include 过滤文件类型减少噪音
+- 输出模式：content（默认）、files_only（仅路径）、count（计数）
+- 用 | 组合多个模式（如 "validate|validator"），一次调用覆盖全部目标
+- ripgrep 语法：字面花括号需转义（用 interface\\{\\} 搜 Go 的 interface{}）
+- 结果已含匹配行，通常无需再 read
+- 复杂多轮搜索用 task 委派`,
   {
-    pattern: { type: 'string', description: '正则表达式。用 | 组合多个模式，\\b 词边界精确匹配。' },
+    pattern: { type: 'string', description: '正则表达式。支持 | 组合多个模式，\\b 词边界。' },
     path: { type: 'string', description: '搜索目录或文件，默认当前目录' },
-    include: { type: 'string', description: '文件类型过滤，如 "*.py"、"*.{js,ts}"、"*.rs"、"*.go"' },
-    output_mode: { type: 'string', description: '输出模式：content（默认，匹配行）、files_only（仅文件路径）、count（匹配数）' },
+    include: { type: 'string', description: '文件类型过滤 glob，如 "*.py"、"*.{js,ts,mjs}"、"*.go"' },
+    output_mode: { type: 'string', description: 'content（默认，匹配行）| files_only（仅路径）| count（计数）' },
   },
   ['pattern'],
   async ({ pattern, path = '.', include, output_mode = 'content' }) => {

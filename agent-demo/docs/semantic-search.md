@@ -1,12 +1,12 @@
 # 代码分析与语义搜索
 
-## 当前实现：code_symbols（tree-sitter AST）
+## 当前实现：symbols（tree-sitter AST）
 
 使用 `web-tree-sitter`（WASM 版）解析代码 AST，提供两种模式：
 
 ```
-code_symbols(path, mode="list")              → 文件符号表
-code_symbols(path, mode="definition", name)  → 指定符号完整代码
+symbols(path, mode="list")              → 文件符号表
+symbols(path, mode="definition", name)  → 指定符号完整代码
 ```
 
 ### 依赖
@@ -19,18 +19,18 @@ code_symbols(path, mode="definition", name)  → 指定符号完整代码
 - `web-tree-sitter`：官方 WASM 运行时，支持 ESM import
 - `@repomix/tree-sitter-wasms`：预构建 wasm 语法文件，兼容 0.26.x（替代停更的 `tree-sitter-wasms`）
 
-实现位置：`src/tools/ast.mjs`
+实现位置：`src/tools/symbols.mjs`
 
-支持语言：`.js` / `.mjs` / `.ts` / `.py`（通过 wasm 语法文件，包含 17 种语言）
+支持 17 种语言：JS/TS/Python/Rust/Go/Java/C/C++/C#/Ruby/PHP/Swift/Dart/CSS/Vue/Solidity/TSX
 
-### 与 grep_search + read_file 的分工
+### 与 grep + read 的分工
 
 | 场景 | 推荐工具 | 原因 |
 |------|---------|------|
-| 搜索关键词/import | grep_search | 跨文件正则搜索 |
-| 了解文件结构 | code_symbols(list) | 一次列出所有符号+行号 |
-| 获取特定函数代码 | code_symbols(definition) | 精确范围，不读整个文件 |
-| 修改前读取内容 | read_file | edit_file 需要精确匹配原文 |
+| 搜索关键词/import | grep | 跨文件正则搜索 |
+| 了解文件结构 | symbols(list) | 一次列出所有符号+行号 |
+| 获取特定函数代码 | symbols(definition) | 精确范围，不读整个文件 |
+| 修改前读取内容 | read | edit 需要精确匹配原文 |
 
 ### tree-sitter 特性
 

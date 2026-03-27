@@ -27,7 +27,10 @@ export class AgentCore {
    * @param {Array} [config.tools] - 自定义工具 schema（默认全部工具）
    * @param {Function} [config.executor] - 自定义工具执行器（默认全局 executeTool）
    */
-  constructor({ apiKey, baseURL, model, maxTokens = 8192, systemPrompt, logger, tools, executor }) {
+  /**
+   * @param {boolean} [config.caching=false] - 启用 Prompt Caching（仅 Anthropic 原生 API）
+   */
+  constructor({ apiKey, baseURL, model, maxTokens = 8192, systemPrompt, logger, tools, executor, caching = false }) {
     this.client = new Anthropic({ apiKey, baseURL });
     this.model = model;
     this.maxTokens = maxTokens;
@@ -35,6 +38,7 @@ export class AgentCore {
     this.logger = logger;
     this.toolSchemas = tools || defaultToolSchemas;
     this.executeTool = executor || defaultExecuteTool;
+    this.caching = caching;
   }
 
   /**
@@ -173,30 +177,29 @@ export class AgentCore {
     return trace;
   }
 
-  async _batchCall(messages, temperature) {
-    const params = {
-      model: this.model,
-      max_tokens: this.maxTokens,
-      system: this.systemPrompt,
-      tools: this.toolSchemas,
-      messages,
-    };
+  _buildParams(messages, temperature) {
+    let system = this.systemPrompt;
+    let tools = this.toolSchemas;
+
+    if (this.caching && tools.length > 0) {
+      system = [{ type: 'text', text: this.systemPrompt, cache_control: { type: 'ephemeral' } }];
+      tools = tools.map((t, i) =>
+        i === tools.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
+      );
+    }
+
+    const params = { model: this.model, max_tokens: this.maxTokens, system, tools, messages };
     if (temperature !== undefined) params.temperature = temperature;
-    return await this.client.messages.create(params);
+    return params;
+  }
+
+  async _batchCall(messages, temperature) {
+    return await this.client.messages.create(this._buildParams(messages, temperature));
   }
 
   async _streamCall(messages, on = {}, temperature) {
     const { text, thinking, blockStart, blockEnd } = on;
-
-    const params = {
-      model: this.model,
-      max_tokens: this.maxTokens,
-      system: this.systemPrompt,
-      tools: this.toolSchemas,
-      messages,
-    };
-    if (temperature !== undefined) params.temperature = temperature;
-    const stream = this.client.messages.stream(params);
+    const stream = this.client.messages.stream(this._buildParams(messages, temperature));
 
     stream.on('streamEvent', (event) => {
       if (event.type === 'content_block_start') {

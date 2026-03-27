@@ -9,7 +9,7 @@ import { define } from './registry.mjs';
 
 define(
   'ls',
-  '列出目录文件树。遵守 .gitignore。优先用 glob/grep 精确搜索。',
+  '列出目录文件树。遵守 .gitignore。了解项目结构时使用。精确搜索优先用 glob/grep。',
   {
     path: { type: 'string', description: '目录路径，默认当前目录' },
     max_depth: { type: 'number', description: '最大递归深度，默认 3' },

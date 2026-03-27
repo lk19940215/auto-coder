@@ -8,7 +8,7 @@
 define('tool_name', '描述（模型据此决定何时调用）', { 参数schema }, ['必填'], async (input) => { ... });
 ```
 
-参考：`src/tools/`（按职责拆分为 file.mjs / search.mjs / glob.mjs / ast.mjs / bash.mjs / task.mjs）
+参考：`src/tools/`（按工具名拆分为独立文件：file.mjs / grep.mjs / glob.mjs / ls.mjs / symbols.mjs / bash.mjs / task.mjs）
 
 ---
 
@@ -25,7 +25,7 @@ define('tool_name', '描述（模型据此决定何时调用）', { 参数schema
 | `grep` | 正则搜索代码内容 | @vscode/ripgrep | Grep |
 | `glob` | 按文件名模式查找文件 | @vscode/ripgrep | Glob |
 | `ls` | 列出目录文件树 | @vscode/ripgrep | LS |
-| `symbols` | AST 分析（列符号/获取定义） | web-tree-sitter | — |
+| `symbols` | AST 分析（17 种语言） | web-tree-sitter | — |
 | `bash` | 执行 bash 命令 | child_process | Bash |
 | `task` | SubAgent 委派 | AgentCore | Task |
 
@@ -83,10 +83,8 @@ execSync(`"${rgPath}" ${modeFlag} --max-count 200 "${pattern}" "${path}" --glob 
 | 模式 | ripgrep 参数 | 返回内容 | 用途 |
 |------|-------------|---------|------|
 | `content`（默认） | `--line-number --no-heading` | 文件:行号:匹配行 | 查看具体匹配 |
-| `files_only` | `--files-with-matches` | 仅文件路径 | 快速定位哪些文件包含关键词 |
-| `count` | `--count` | 文件:匹配数 | 评估匹配范围大小 |
-
-推荐策略：先 `files_only` 定位文件 → 再 `content` 看具体行 → 或直接 `read`。
+| `files_only` | `--files-with-matches` | 仅文件路径 | 快速定位文件 |
+| `count` | `--count` | 文件:匹配数 | 评估匹配范围 |
 
 ripgrep 特性：自动遵守 .gitignore、跳过二进制文件、速度极快。
 
@@ -114,14 +112,13 @@ logs/
 **3. 注意事项**
 - 直接指定路径时会绕过 `.gitignore`：`rg --files ./logs` 能列出 logs 下的文件
 - 从父目录遍历时遵守：`rg --files .` 不会进入 logs/
-- 使用 `--no-ignore` 可强制搜索所有文件（包括被忽略的）
-- `read` 工具用 Node.js `fs.readFile`，不受 `.gitignore` 影响，任何文件都能读
+- `read` 工具用 Node.js `fs.readFile`，不受 `.gitignore` 影响
 
 ---
 
 ## glob 原理
 
-按文件名模式查找文件。路径不确定时先用 glob 精确定位，避免猜路径导致 ENOENT 错误。
+按文件名模式查找文件。路径不确定时先用 glob 精确定位。
 
 ```
 glob("**/agent.*")           → src/agent.mjs
@@ -159,200 +156,29 @@ execSync(`"${rgPath}" --files --max-depth ${max_depth} "${path}"`);
 
 ### 为什么需要 MultiEdit
 
-`edit` 每次只能改一处。如果一个文件需要改 5 个地方：
-
-```
-edit → 改第 1 处 → API 调用 → 模型决定改第 2 处 →
-edit → 改第 2 处 → API 调用 → ... → 改第 5 处
-```
-
-5 次工具调用 = 5 次 API 往返，每次都发送完整 messages 历史，token 开销巨大。
+`edit` 每次只能改一处。改 N 处 = N 次工具调用 = N 次 API 往返，token 开销巨大。
 
 MultiEdit 把 N 次操作合并为 1 次：
 
-```
+```javascript
 multi_edit(path, [
   { old_string: 'A', new_string: 'A2' },
   { old_string: 'B', new_string: 'B2' },
-  { old_string: 'C', new_string: 'C2' },
 ])
-```
-
-### 实现原理
-
-```javascript
-define('multi_edit', '对同一文件执行多处 Search & Replace', {
-  path: { type: 'string' },
-  edits: {
-    type: 'array',
-    items: {
-      type: 'object',
-      properties: {
-        old_string: { type: 'string' },
-        new_string: { type: 'string' },
-      },
-      required: ['old_string', 'new_string'],
-    },
-  },
-}, ['path', 'edits'], async ({ path, edits }) => {
-  let content = await readFile(path, 'utf-8');
-  const results = [];
-
-  for (const [i, edit] of edits.entries()) {
-    const count = content.split(edit.old_string).length - 1;
-    if (count !== 1) {
-      results.push(`#${i + 1} 失败: 匹配 ${count} 次`);
-      continue;
-    }
-    content = content.replace(edit.old_string, edit.new_string);
-    results.push(`#${i + 1} 成功`);
-  }
-
-  await writeFile(path, content, 'utf-8');
-  return results.join('\n');
-});
 ```
 
 ### 关键细节
 
-1. **顺序执行**：edits 从上到下依次应用，每次替换后文件内容变化，后续 old_string 匹配的是**更新后的内容**
-2. **唯一性检查**：和 edit 相同，每个 old_string 必须精确匹配 1 次
-3. **部分成功**：某处匹配失败不影响其他编辑（跳过 + 报告），最终结果告诉模型哪些成功哪些失败
-4. **原子性选择**：生产级可以做全部成功才写入（回滚），或允许部分成功（当前方案）
-
-### Edit vs MultiEdit 对比
-
-| | Edit | MultiEdit |
-|--|------|-----------|
-| 每次调用 | 改 1 处 | 改 N 处 |
-| API 往返 | N 次（改 N 处） | 1 次 |
-| 模型难度 | 低（只关注一处） | 高（需同时准备多个 old_string） |
-| 上下文消耗 | 每次都发完整历史 | 只发 1 次 |
-| 适用场景 | 简单修改 | 重构、批量重命名、多处联动修改 |
-
-### 与 Apply Patch（diff 格式）的区别
-
-```
-// MultiEdit: 精确字符串匹配
-{ old_string: 'const MAX = 100', new_string: 'const MAX = 200' }
-
-// Apply Patch: unified diff 格式
-@@ -5,3 +5,3 @@
--const MAX = 100
-+const MAX = 200
-```
-
-Apply Patch（OpenAI 方案）依赖模型生成正确的 diff 格式，上下文行号必须精确。
-MultiEdit（Claude/Anthropic 方案）依赖精确的字符串匹配，不依赖行号，更鲁棒。
+1. **顺序执行**：edits 从上到下依次应用，后续 old_string 匹配**更新后的内容**
+2. **唯一性检查**：每个 old_string 必须精确匹配 1 次
+3. **部分成功**：某处失败不影响其他编辑
+4. **与 Apply Patch 的区别**：MultiEdit 依赖精确字符串匹配（不依赖行号），Apply Patch 依赖 unified diff 格式
 
 ---
 
-## Claude Code 完整工具列表
+## task / SubAgent 原理
 
-```
-Bash, Read, Write, Edit, MultiEdit, Grep, Glob, LS,
-WebFetch, WebSearch, Task, TodoWrite, NotebookRead, NotebookEdit, mcp__*
-```
-
-agent-demo 已实现：`Bash, Read, Write, Edit, MultiEdit, Grep, Glob, LS, Task` + `Symbols`（自研）
-
-以下是未实现工具的原理和实现思路。
-
----
-
-## WebFetch 原理（未实现）
-
-### 作用
-
-获取 URL 内容，转为可读文本返回给模型。用于查阅文档、API 参考、GitHub 代码等。
-
-### 实现
-
-```javascript
-define('web_fetch', '获取 URL 内容，返回可读文本', {
-  url: { type: 'string', description: '完整 URL' },
-}, ['url'], async ({ url }) => {
-  const response = await fetch(url, {
-    headers: { 'User-Agent': 'AI-Agent/1.0' },
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!response.ok) return `HTTP ${response.status}: ${response.statusText}`;
-
-  const contentType = response.headers.get('content-type') || '';
-  const text = await response.text();
-
-  if (contentType.includes('json')) return text;
-  if (contentType.includes('html')) {
-    return htmlToText(text); // 需要实现或用库
-  }
-
-  return text;
-});
-```
-
-### HTML 转文本方案
-
-| 方案 | npm 包 | 特点 |
-|------|--------|------|
-| HTML → Markdown | `turndown` | 保留格式，模型友好 |
-| 提取正文 | `@mozilla/readability` | 去掉导航/广告，只保留文章 |
-| 简单去标签 | 正则 `/<[^>]*>/g` | 粗暴但零依赖 |
-
-生产级推荐 `turndown`（HTML→Markdown），模型理解 Markdown 比纯文本好。
-
----
-
-## WebSearch 原理（未实现）
-
-### 作用
-
-搜索互联网，返回摘要和链接。模型通过搜索获取训练数据之外的实时信息。
-
-### 实现
-
-```javascript
-define('web_search', '搜索互联网，返回摘要和链接', {
-  query: { type: 'string', description: '搜索关键词' },
-}, ['query'], async ({ query }) => {
-  const resp = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}`, {
-    headers: { 'X-Subscription-Token': BRAVE_API_KEY },
-  });
-  const data = await resp.json();
-  return data.web.results.slice(0, 5).map(r =>
-    `${r.title}\n${r.url}\n${r.description}`
-  ).join('\n\n');
-});
-```
-
-### 搜索 API 选择
-
-| API | 免费额度 | 质量 |
-|-----|---------|------|
-| Brave Search | 2000次/月 | 好 |
-| Google Custom Search | 100次/天 | 最好 |
-| SerpAPI | 100次/月 | 好 |
-| DuckDuckGo Instant | 无限（非官方） | 一般 |
-
-Claude Code 和 Cursor 都是调第三方搜索 API，不是自己爬网页。
-
----
-
-## Task / SubAgent 原理（已实现）
-
-### 作用
-
-将子任务委托给独立的 Agent Loop，子 Agent 有独立的 messages 历史，完成后只返回摘要。
-
-### 为什么需要
-
-```
-父 Agent messages: [用户消息, AI回复, tool1, tool2, ... tool50, ...]
-                    ↑ 每次 API 调用都发送全部，token 爆炸
-
-SubAgent: 独立 messages，完成后只返回一段摘要文本
-父 Agent messages: [用户消息, AI回复, task_result: "分析完成，共6个文件"]
-                    ↑ 主上下文干净
-```
+将子任务委托给独立的 Agent Loop，SubAgent 有独立 messages 历史，完成后只返回摘要。
 
 ### 架构
 
@@ -363,144 +189,37 @@ SubAgent: 独立 messages，完成后只返回一段摘要文本
               └─ read, grep, glob, ls, symbols
 ```
 
-### 实现（src/tools/task.mjs）
+### 核心设计
 
-核心设计：
 - **独立上下文** — SubAgent 使用空 messages，不污染父 Agent 上下文
-- **受限工具集** — 只给只读工具（read/grep/glob/ls/symbols），不能修改文件
+- **受限工具集** — 只给只读工具，不能修改文件
 - **EventEmitter** — 通过事件向父 Agent 发送进度，驱动 Ink UI 显示
 - **独立日志** — `AGENT_DEBUG=true` 时生成 `logs/sub-agent-*.log`
 
-```javascript
-export const taskEvents = new EventEmitter();
-
-define('task', '委派子任务给 SubAgent...', {
-  description: { type: 'string' },
-  prompt: { type: 'string' },
-}, ['description', 'prompt'], async ({ description, prompt }) => {
-  const tools = SUB_TOOLS.filter(n => registry[n]).map(n => registry[n].schema);
-  const executor = async (name, input) => { /* 过滤只读工具 */ };
-
-  const subAgent = new AgentCore({
-    tools, executor,
-    systemPrompt: `任务: ${description}`,
-  });
-
-  taskEvents.emit('start', { description });
-  const trace = await subAgent.run(prompt, [], callbacks, { maxTurns: 8 });
-  taskEvents.emit('done', { toolCalls: trace.toolCalls.length });
-
-  return trace.finalText + toolSummary;
-});
-```
-
-### AgentCore 如何支持 SubAgent
-
-构造函数新增 `tools` 和 `executor` 可选参数：
-
-```javascript
-class AgentCore {
-  constructor({ apiKey, baseURL, model, maxTokens, systemPrompt, logger,
-                tools,     // 自定义工具 schema（默认全部工具）
-                executor,  // 自定义工具执行器（默认全局 executeTool）
-  }) {
-    this.toolSchemas = tools || defaultToolSchemas;
-    this.executeTool = executor || defaultExecuteTool;
-  }
-}
-```
-
 父 Agent 和 SubAgent 复用同一个 `AgentCore` 类，通过注入不同的 tools/executor 实现差异化。
-
-### Ink UI 集成
-
-通过 EventEmitter 解耦 task 工具和 UI 层：
-
-```
-task.mjs:  taskEvents.emit('tool', { step, name })
-                ↓
-agent.mjs: taskEvents.on('tool', ...) → display.print(...)
-                ↓
-ink.mjs:   状态指示器 → 🟣 "子Agent 运行中..."
-```
-
-三种状态颜色区分：
-- 🔵 蓝色 — 思考中...
-- 🟡 黄色 — 工具调用中...
-- 🟣 紫色 — 子Agent 运行中...
-
-### Cursor 的 SubAgent 类型
-
-| 类型 | 用途 | 特点 |
-|------|------|------|
-| `generalPurpose` | 通用任务 | 完整工具集 |
-| `explore` | 代码探索 | 只读，速度快 |
-| `shell` | 命令执行 | 专注终端 |
-| `browser-use` | 浏览器测试 | Web 自动化 |
-| `best-of-n-runner` | 并行尝试 | 独立 git worktree，取最优解 |
-
-本项目的 task 工具对应 Cursor 的 `explore` 类型（只读工具集）。
 
 ---
 
-## TodoWrite 原理（未实现）
+## 未实现工具
 
-### 作用
+### WebFetch
 
-模型在处理复杂多步任务时，自行创建和管理 TODO 列表。帮助模型组织思路，跟踪进度。
+获取 URL 内容，转为可读文本。实现方案：Node.js `fetch` + `turndown`（HTML→Markdown）。
 
-不是给用户看的——是**模型给自己用的**。
+### WebSearch
 
-### 实现
+搜索互联网，返回摘要和链接。实现方案：调第三方搜索 API（Brave Search 免费 2000次/月）。
 
-```javascript
-let _todos = [];
+### TodoWrite
 
-define('todo_write', '创建或更新任务列表', {
-  todos: {
-    type: 'array',
-    items: {
-      type: 'object',
-      properties: {
-        id: { type: 'string' },
-        content: { type: 'string' },
-        status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'cancelled'] },
-      },
-      required: ['id', 'content', 'status'],
-    },
-  },
-  merge: { type: 'boolean', description: '合并还是替换' },
-}, ['todos'], async ({ todos, merge = true }) => {
-  if (merge) {
-    for (const todo of todos) {
-      const existing = _todos.find(t => t.id === todo.id);
-      if (existing) Object.assign(existing, todo);
-      else _todos.push(todo);
-    }
-  } else {
-    _todos = todos;
-  }
-  return _todos.map(t => `[${t.status}] ${t.id}: ${t.content}`).join('\n');
-});
-```
+模型自行创建和管理 TODO 列表（不是给用户看的，是模型给自己用的）。维护内存中的 `_todos` 数组。
 
 ---
 
 ## 设计要点
 
-- description 写清"能做什么"+"什么时候用"（模型选工具的唯一依据）
+- description 决定模型何时调用（能力 + 约束，不教策略）
 - JSON Schema 加约束（enum、maxLength）
-- 返回结果截断（demo 用 8000 字符），防止上下文溢出
+- 返回结果截断（8000 字符），防止上下文溢出
 - 错误用明确消息返回，让模型换策略重试
-
----
-
-## CLI vs IDE 并发
-
-| | CLI Agent（Claude Code / demo） | IDE Agent（Cursor） |
-|--|------|------|
-| 执行 | 串行：多个 tool_use 逐个执行 | 子代理并行：最多 8 个独立 worktree |
-| 并行技巧 | "batch tool" 鼓励模型返回多 tool_use | 内置 Explore/Bash/Browser 子代理 |
-| 文件访问 | 通过工具调用（消耗 token） | 直接文件系统 + LSP |
-
-Cursor 更快：子代理并行 + 直接文件访问 + LSP 集成。
+- description 写法参考 [架构参考](prompt-architecture.md) 中的设计原则

@@ -9,9 +9,13 @@ import { define } from './registry.mjs';
 
 define(
   'glob',
-  '按文件名模式查找文件。路径不确定时先用此工具定位。可同时发起多个模式搜索。',
+  `按文件名模式查找文件路径。遵守 .gitignore。路径不确定时先用此工具定位。不要用 bash find。
+
+用法：
+- 支持完整 glob 语法（如 "**/*.py"、"src/**/*.{ts,tsx}"、"**/test_*.go"）
+- 可同时发起多个模式搜索`,
   {
-    pattern: { type: 'string', description: 'glob 模式。如 "**/agent.mjs"、"**/*.{ts,tsx}"、"src/**/*.test.js"' },
+    pattern: { type: 'string', description: 'glob 模式，如 "**/*.py"、"src/**/*.{ts,tsx}"' },
     path: { type: 'string', description: '搜索起始目录，默认当前目录' },
   },
   ['pattern'],

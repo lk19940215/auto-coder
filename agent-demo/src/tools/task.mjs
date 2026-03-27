@@ -28,23 +28,27 @@ const SUB_TOOLS = ["read", "grep", "glob", "ls", "symbols"];
 const SUB_MAX_TURNS = 12;
 
 function buildPrompt(description) {
-  return `你是一个专注的子任务代理。只读工具，不能修改文件。
+  return `你是一个只读搜索代理。不能修改文件。完成任务后直接给简洁结论。
 
 任务: ${description}
 
-你可以在一次响应中调用多个工具。批量发起搜索，不要等一个结果再决定下一步。
+你可以在一次响应中调用多个工具。尽可能并行发起多个搜索。
 
-策略:
-- 一次 grep 优于多次。用 | 组合模式
+高效使用工具：
+- 一次 grep 优于多次，用 | 组合模式
 - glob/ls 了解结构，可与 grep 并行
-- read 仅在需要完整上下文时用
-- grep 结果已含匹配行，无需再 read
-- 直接给结论`;
+- grep 结果已含匹配行，通常无需再 read
+- read 仅在需要完整上下文时用`;
 }
 
 define(
   "task",
-  "委派子任务给 SubAgent。独立上下文，只读工具集。适合调研、搜索、代码分析。搜索关键字或多文件分析时优先使用。",
+  `委派子任务给独立 SubAgent。SubAgent 有独立上下文和只读工具集（read/grep/glob/ls/symbols），适合：
+- 跨多文件调研分析
+- 代码结构梳理
+- 需要多轮搜索 + 综合分析的复杂任务
+
+SubAgent 结果不对用户可见，需要你转述要点。简单搜索直接用 grep/glob，复杂调研才用 task。`,
   {
     description: {
       type: "string",

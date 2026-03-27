@@ -4,6 +4,23 @@
 
 ---
 
+## v8 — 2026-03-27
+
+- 全部工具描述参考 Claude Code 重写，遵循 **"能力 + 约束，不教策略"** 原则
+- grep: +正则示例、+ripgrep 转义说明、+复杂搜索委派 task
+- bash: 负面约束结构化列表（→ 箭头格式）、+write 约束
+- edit: +缩进保留警告
+- task: 列出 SubAgent 工具集（透明性）
+- prompt-architecture.md: 新增核心设计原则（P1-P5）、Prompt Caching 说明
+- eval 98.8/100，无退化
+
+## v7 — 2026-03-27
+
+- SYSTEM_PROMPT 对齐 Claude Code "一句话路由" 模式
+- Bash 负面约束从 SYSTEM_PROMPT 移到 bash description
+- 加入输出效率原则
+- prompt-architecture.md 文档：Claude Code + Cursor 提示词架构全面分析
+
 ## v6 — 2026-03-27
 
 - 工具文件重命名：`search.mjs` → `grep.mjs` + `ls.mjs`，`ast.mjs` → `symbols.mjs`

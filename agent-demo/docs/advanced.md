@@ -28,7 +28,7 @@
 
 ## 文件编辑策略
 
-✅ 已实现 Search & Replace：`edit_file(path, old_string, new_string)`
+✅ 已实现 Search & Replace：`edit(path, old_string, new_string)`
 
 | 方案 | 采用者 | 状态 |
 |------|--------|------|

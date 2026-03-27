@@ -7,7 +7,15 @@ import { define } from './registry.mjs';
 
 define(
   'bash',
-  '执行 bash 命令。用于 git、测试、安装、构建。禁止用于搜索（用 grep）或列目录（用 ls）。禁止 rm -rf、sudo。',
+  `执行 bash 命令。用于系统操作：git、npm、测试、构建、环境管理。
+
+以下操作有专用工具，不要用 bash：
+- 搜索内容 → grep（不要 grep/rg/awk）
+- 搜索文件 → glob（不要 find/ls）
+- 读文件 → read（不要 cat/head/tail）
+- 写文件 → write（不要 echo >/cat <<）
+- 编辑文件 → edit/multi_edit（不要 sed/awk）
+专用工具提供更好的结构化输出和错误处理，优先使用。`,
   { command: { type: 'string', description: '要执行的 bash 命令' } },
   ['command'],
   async ({ command }) => {

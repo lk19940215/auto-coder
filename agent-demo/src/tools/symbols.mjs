@@ -192,7 +192,12 @@ async function getDefinition(filePath, name) {
 
 define(
   'symbols',
-  '分析代码结构（AST）。list 列出符号及行号，definition 获取指定符号代码。支持 JS/TS/Python/Rust/Go/Java/C/C++/Ruby/PHP/Swift/Dart 等 17 种语言。',
+  `分析代码结构（AST）。基于 tree-sitter。
+
+用法：
+- list：列出文件顶层符号及行号范围（函数、类、接口、类型等）
+- definition：获取指定符号的完整代码
+- 支持 17 种语言：JS/TS/Python/Rust/Go/Java/C/C++/C#/Ruby/PHP/Swift/Dart/CSS/Vue/Solidity`,
   {
     path: { type: 'string', description: '文件路径' },
     mode: { type: 'string', description: '"list" 列出符号，"definition" 获取指定符号代码' },

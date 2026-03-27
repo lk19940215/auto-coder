@@ -92,19 +92,28 @@ const result = await client.beta.messages.toolRunner({ model, tools, messages })
 
 ```
 src/
-  agent.mjs              # 主循环（Agent Loop）
+  agent.mjs              # 入口（交互模式 / headless -p 模式）
   config.mjs             # 配置 + SYSTEM_PROMPT
+  eval.mjs               # eval 入口
   core/                  # 运行时基础设施
+    agent-core.mjs       # 纯逻辑引擎（无 UI 依赖）
     ink.mjs              # 终端 UI（Ink / React for CLI）
     logger.mjs           # 文件日志
     messages.mjs         # 对话历史存储
-  tools/                 # 工具系统
-    registry.mjs         # define() + 注册表（共享基础设施）
-    index.mjs            # 聚合所有工具 + 导出 toolSchemas / executeTool
-    file.mjs             # read_file / write_file / edit_file
-    search.mjs           # grep_search / list_files（@vscode/ripgrep）
-    ast.mjs              # code_symbols（web-tree-sitter AST）
-    bash.mjs             # execute_bash
+  eval/                  # eval 子模块
+    cases.mjs            # 测试用例定义
+    runner.mjs           # 运行器 + 评分 + 沙盒
+    report.mjs           # 报告生成
+  tools/                 # 工具系统（每个文件 = 一个工具）
+    registry.mjs         # define() + 注册表
+    index.mjs            # 聚合导出 toolSchemas / executeTool
+    file.mjs             # read / write / edit / multi_edit
+    grep.mjs             # grep（@vscode/ripgrep）
+    glob.mjs             # glob（@vscode/ripgrep）
+    ls.mjs               # ls（@vscode/ripgrep）
+    symbols.mjs          # symbols（web-tree-sitter AST，17 种语言）
+    bash.mjs             # bash
+    task.mjs             # task（SubAgent 委派）
 ```
 
 ## 技术栈

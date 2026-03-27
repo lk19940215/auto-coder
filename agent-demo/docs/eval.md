@@ -151,15 +151,21 @@ AgentCore (core/agent-core.mjs)
   └── eval.mjs   — 评估模式（batch + 评分）
 ```
 
-`AgentCore.run()` 是纯逻辑引擎，通过回调注入与 UI 解耦：
+`AgentCore.run()` 是纯逻辑引擎，通过选项注入与 UI 解耦：
 
 ```javascript
-const trace = await agent.run(input, messages, {
-  onToolStart,  // (name, input) => void
-  onToolEnd,    // (name, result, success) => void
-  onText,       // (chunk) => void
-  onThinking,   // (chunk) => void
-}, { stream: true, maxTurns: 10 });
+const trace = await agent.run(prompt, {
+  messages,
+  stream: true,
+  maxTurns: 10,
+  temperature: 0,
+  on: {
+    toolStart(name, input) {},
+    toolEnd(name, result, success) {},
+    text(chunk) {},
+    thinking(chunk) {},
+  },
+});
 ```
 
 ### 代码结构
@@ -277,48 +283,53 @@ test-example/
 | read_basic | 读取文件 | 文件读取 | 2 |
 | list_dir | 列出目录 | 目录探索 | 3 |
 
-### shopping-cart 项目
+### JS 项目（shopping-cart）
 
 | Case ID | 名称 | 测试能力 | 最大轮次 |
 |---------|------|---------|---------|
-| search_function | 搜索函数 | 代码搜索 + 定位 | 5 |
-| fix_bug | 修复 Bug | 读取 → 编辑 → 验证 | 5 |
-| multi_edit | 多处修改 | 批量编辑 | 4 |
-| explore_then_edit | 探索后编辑 | 搜索 → 定位 → 修改 | 6 |
+| fix_bug | JS 修复 Bug | read → edit | 5 |
+| multi_edit | JS 多处修改 | read → multi_edit | 4 |
+| explore_then_edit | JS 探索后编辑 | grep → read → edit | 6 |
 
-### todo-app 项目
-
-| Case ID | 名称 | 测试能力 | 最大轮次 |
-|---------|------|---------|---------|
-| todo_add_feature | 添加功能 | 理解类结构 + 添加方法 | 4 |
-| todo_cross_file | 跨文件修改 | 多文件协同修改 | 6 |
-
-### string-utils 项目
+### Python 项目（py-utils）
 
 | Case ID | 名称 | 测试能力 | 最大轮次 |
 |---------|------|---------|---------|
-| improve_validation | 改进验证 | 理解逻辑 + 重写函数 | 4 |
-| add_null_safety | 空值保护 | 边界条件处理 | 4 |
+| py_search | 搜索函数 | grep / symbols | 4 |
+| py_fix | 修复 Bug | read → edit | 4 |
 
-### 跨项目
-
-| Case ID | 名称 | 测试能力 | 最大轮次 |
-|---------|------|---------|---------|
-| cross_project_search | 跨项目搜索 | 全局搜索 + 信息汇总 | 3 |
-| bash_verify | 命令验证 | 编辑 + bash 验证 | 6 |
-
-### SubAgent（task 工具）
+### Go 项目（go-api）
 
 | Case ID | 名称 | 测试能力 | 最大轮次 |
 |---------|------|---------|---------|
-| task_analyze | SubAgent 项目分析 | 委派子任务 + 汇总结果 | 3 |
+| go_search | 搜索函数 | grep / symbols | 4 |
+| go_fix | 修改配置 | read → edit | 4 |
+
+### Rust 项目（rust-lib）
+
+| Case ID | 名称 | 测试能力 | 最大轮次 |
+|---------|------|---------|---------|
+| rust_search | 搜索结构 | symbols | 4 |
+
+### 跨语言
+
+| Case ID | 名称 | 测试能力 | 最大轮次 |
+|---------|------|---------|---------|
+| cross_lang_search | 跨语言搜索 | grep 跨 JS/Python/Go | 3 |
+| bash_verify | 命令验证 | read → edit → bash | 6 |
+
+### SubAgent
+
+| Case ID | 名称 | 测试能力 | 最大轮次 |
+|---------|------|---------|---------|
+| task_analyze | 多语言分析 | task 委派 | 3 |
 
 ### 多轮对话
 
 | Case ID | 名称 | 测试能力 | 最大轮次 |
 |---------|------|---------|---------|
-| multi_turn_explore | 多轮探索修复 | 上下文保持 + 跨轮次编辑 | 8 |
-| multi_turn_refactor | 多轮重构 | 上下文保持 + multi_edit | 6 |
+| multi_turn_explore | 多轮探索修复 (3 轮) | 上下文保持 + 跨轮次编辑 | 8 |
+| multi_turn_refactor | 多轮重构 (2 轮) | 上下文保持 + multi_edit | 6 |
 
 ### 长上下文注意力
 

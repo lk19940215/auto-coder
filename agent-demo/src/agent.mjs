@@ -5,7 +5,7 @@
  * Headless:  node src/agent.mjs -p "任务描述"      (console 输出)
  */
 
-import { API_KEY, BASE_URL, DEFAULT_MODEL, MAX_TOKENS, DEBUG, SYSTEM_PROMPT, RESUME_FILE } from './config.mjs';
+import { API_KEY, BASE_URL, DEFAULT_MODEL, MAX_TOKENS, DEBUG, ENABLE_CACHE, SYSTEM_PROMPT, RESUME_FILE } from './config.mjs';
 import { AgentCore } from './core/agent-core.mjs';
 import { Logger } from './core/logger.mjs';
 import { Messages } from './core/messages.mjs';
@@ -48,6 +48,7 @@ async function setup() {
   const agent = new AgentCore({
     apiKey: API_KEY, baseURL: BASE_URL, model: DEFAULT_MODEL,
     maxTokens: MAX_TOKENS, systemPrompt: SYSTEM_PROMPT, logger,
+    caching: ENABLE_CACHE,
   });
 
   const logFile = logger.init();
