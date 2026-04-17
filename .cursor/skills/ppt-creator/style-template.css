@@ -1,0 +1,60 @@
+/* Slidev Global Styles - copy to project root as style.css */
+
+/* ===== Oral mode (9/16): add the following when generating vertical presentations =====
+.slidev-layout {
+  padding: 0 !important;
+}
+===== */
+
+/* Gradient text for all h1 titles on content slides */
+.slidev-layout h1 {
+  display: inline-block !important;
+  background: linear-gradient(135deg, #60a5fa, #38bdf8) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  font-weight: 800 !important;
+}
+
+/* Color variants - apply via <h1 class="gradient-title-xxx"> */
+.slidev-layout h1.gradient-title-red {
+  background: linear-gradient(135deg, #f87171, #fb923c) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.slidev-layout h1.gradient-title-blue {
+  background: linear-gradient(135deg, #60a5fa, #38bdf8) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.slidev-layout h1.gradient-title-cyan {
+  background: linear-gradient(135deg, #22d3ee, #60a5fa) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.slidev-layout h1.gradient-title-green {
+  background: linear-gradient(135deg, #4ade80, #22d3ee) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.slidev-layout h1.gradient-title-purple {
+  background: linear-gradient(135deg, #a78bfa, #60a5fa) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.slidev-layout h1.gradient-title-orange {
+  background: linear-gradient(135deg, #fb923c, #f59e0b) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
